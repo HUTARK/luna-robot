@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>LUNA — Technovation</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   LUNA — glass control surface, emerald
+
+   STRUCTURE is Ben's, because it was proven on a touchscreen: status bar on
+   top, six tabs along the bottom, pill buttons, segmented selectors. What
+   changed is the material and the colour, not where things are.
+
+   GLASS needs something behind it or it is just grey. Three slow-drifting
+   emerald blobs sit on #bg-aura beneath every panel; the blur picks them up,
+   so panels shift subtly as the blobs pass. Remove the aura and the whole
+   design collapses to flat grey — that is the one thing not to delete.
+
+   backdrop-filter is GPU-composited in Firefox 103+. Every animation here
+   moves transform/opacity only, never width/top/filter, so the compositor can
+   keep it off the main thread. That matters on a robot that is also running
+   Whisper and YOLO.
+
+   THE ORB is the signature. Four blurred radial gradients rotate and scale on
+   different periods inside a circular mask — the flowing look Siri has, done
+   with transforms so it costs almost nothing. Idle it drifts slowly; speaking
+   it speeds up, brightens, and the ring of bars around it comes alive.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  /* emerald ramp */
+  --e-100:#D7FFF2; --e-300:#5EF2C4; --e-400:#22DFA6; --e-500:#0FBF8B;
+  --e-600:#0A8F69; --e-700:#076B4F; --e-900:#031F17;
+  --mint:#8CFFDC;
+  --amber:#FFC44D; --rose:#FF6B84;
+  /* ground */
+  --ink:#030806; --ink-2:#061109;
+  /* glass */
+  --g-1:rgba(255,255,255,.045);
+  --g-2:rgba(255,255,255,.075);
+  --g-line:rgba(214,255,240,.11);
+  --g-line-2:rgba(214,255,240,.20);
+  --g-sheen:rgba(255,255,255,.10);
+  /* text */
+  --text:#EAFFF7; --dim:rgba(214,255,240,.62); --faint:rgba(214,255,240,.34);
+  --topbar:62px; --tabbar:72px;
+  /* ── depth system ──────────────────────────────────────────────────────
+     Three fixed elevations, used consistently, so the interface reads as
+     stacked physical planes rather than as boxes with random shadows.
+     Each is a contact shadow plus a diffuse one plus a top highlight —
+     that combination is what makes a surface look lit from above. */
+  --lift-1:0 2px 4px rgba(0,0,0,.34),0 8px 20px rgba(0,0,0,.30),
+           inset 0 1px 0 rgba(255,255,255,.07);
+  --lift-2:0 4px 8px rgba(0,0,0,.38),0 16px 40px rgba(0,0,0,.38),
+           inset 0 1px 0 rgba(255,255,255,.11);
+  --lift-3:0 8px 16px rgba(0,0,0,.42),0 30px 70px rgba(0,0,0,.45),
+           inset 0 1px 0 rgba(255,255,255,.14);
+  --ease:cubic-bezier(.22,.61,.36,1);
+  font-size:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  user-select:none;-webkit-user-select:none;touch-action:manipulation}
+html,body{height:100%;overflow:hidden;background:var(--ink);color:var(--text);
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+.mono{font-family:ui-monospace,'Roboto Mono',Menlo,monospace;font-variant-numeric:tabular-nums}
+input,textarea{user-select:text;-webkit-user-select:text}
+button{font-family:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--e-400);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important}}
+
+/* ── the aura the glass reads from ───────────────────────────────────── */
+#bg-aura{position:fixed;inset:-20%;z-index:-2;pointer-events:none;
+  background:var(--ink)}
+#bg-aura i{position:absolute;display:block;border-radius:50%;filter:blur(90px);
+  opacity:.5;will-change:transform}
+#bg-aura i:nth-child(1){width:58vw;height:58vw;left:-12%;top:-14%;
+  background:radial-gradient(circle,#0FBF8B,transparent 68%);
+  animation:drift1 34s ease-in-out infinite}
+#bg-aura i:nth-child(2){width:46vw;height:46vw;right:-8%;top:22%;
+  background:radial-gradient(circle,#076B4F,transparent 66%);
+  animation:drift2 41s ease-in-out infinite}
+#bg-aura i:nth-child(3){width:40vw;height:40vw;left:28%;bottom:-18%;
+  background:radial-gradient(circle,#22DFA6,transparent 70%);opacity:.3;
+  animation:drift3 47s ease-in-out infinite}
+@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(9vw,7vh) scale(1.14)}}
+@keyframes drift2{0%,100%{transform:translate(0,0) scale(1.06)}
+  50%{transform:translate(-8vw,-6vh) scale(.92)}}
+@keyframes drift3{0%,100%{transform:translate(0,0) scale(.95)}
+  50%{transform:translate(6vw,-8vh) scale(1.18)}}
+/* a fine grid, barely there — gives the glass an edge to refract */
+#bg-grid{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.32;
+  background-image:linear-gradient(rgba(94,242,196,.05) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(94,242,196,.05) 1px,transparent 1px);
+  background-size:46px 46px}
+
+/* ── HUD frame ────────────────────────────────────────────────────────
+   Corner brackets and a slow scan line, at the very front of the 3D space.
+   They never move with the content, so they read as the housing the interface
+   sits inside — the thing that makes it feel like an instrument rather than a
+   web page. pointer-events:none throughout: it must never eat a touch. */
+#hud-frame{position:fixed;inset:0;z-index:40;pointer-events:none}
+#hud-frame .c{position:absolute;width:26px;height:26px;
+  border:1px solid rgba(94,242,196,.4)}
+#hud-frame .tl{left:8px;top:8px;border-right:none;border-bottom:none}
+#hud-frame .tr{right:8px;top:8px;border-left:none;border-bottom:none}
+#hud-frame .bl{left:8px;bottom:8px;border-right:none;border-top:none}
+#hud-frame .br{right:8px;bottom:8px;border-left:none;border-top:none}
+#hud-frame .scan{position:absolute;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(94,242,196,.30),transparent);
+  animation:sweep 9s linear infinite}
+@keyframes sweep{0%{top:-2%;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:102%;opacity:0}}
+
+/* ── glass primitive ─────────────────────────────────────────────────── */
+.glass{background:var(--g-1);backdrop-filter:blur(22px) saturate(150%);
+  -webkit-backdrop-filter:blur(22px) saturate(150%);
+  border:1px solid var(--g-line);position:relative;overflow:hidden}
+/* the top sheen is what reads as "glass" rather than "translucent box" */
+.glass::after{content:'';position:absolute;left:0;right:0;top:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--g-sheen) 24%,
+             var(--g-sheen) 76%,transparent);pointer-events:none}
+
+.eyebrow{font-size:.6rem;font-weight:700;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--faint)}
+
+/* ═══ Status bar ═══ */
+#topbar{height:var(--topbar);display:flex;align-items:center;gap:12px;
+  padding:0 16px;background:rgba(3,8,6,.55);
+  backdrop-filter:blur(26px) saturate(150%);
+  -webkit-backdrop-filter:blur(26px) saturate(150%);
+  border-bottom:1px solid var(--g-line);position:relative;z-index:5}
+#logo{display:flex;align-items:center;gap:11px}
+#logo img{height:26px;display:block}
+#logo .wm{font-weight:200;font-size:1.32rem;letter-spacing:.36em;
+  text-transform:uppercase}
+#logo .wm b{font-weight:600;color:var(--e-300)}
+#topbar .grow{flex:1}
+
+.chip{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px;
+  border-radius:999px;background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  font-size:.64rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--dim)}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.chip.live{color:var(--e-100);border-color:var(--g-line-2)}
+.chip.live .dot{background:var(--e-300);box-shadow:0 0 10px var(--e-300);
+  animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.42}}
+.chip.warn{color:var(--amber);border-color:rgba(255,196,77,.28)}
+.chip.warn .dot{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.chip.bad{color:var(--rose);border-color:rgba(255,107,132,.3)}
+.chip.bad .dot{background:var(--rose)}
+
+#batt{display:flex;align-items:center;gap:9px;height:32px;padding:0 12px;
+  border-radius:999px;background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+#batt .bar{width:32px;height:13px;border-radius:3px;
+  border:1.5px solid rgba(214,255,240,.42);position:relative;padding:1.5px}
+#batt .bar::after{content:'';position:absolute;right:-4px;top:3.5px;width:2px;
+  height:4px;background:rgba(214,255,240,.42);border-radius:0 1px 1px 0}
+#batt-fill{height:100%;background:var(--e-300);border-radius:1px;
+  transition:width .6s ease;box-shadow:0 0 8px rgba(94,242,196,.55)}
+#batt.low #batt-fill{background:var(--amber);box-shadow:0 0 8px rgba(255,196,77,.5)}
+#batt.crit #batt-fill{background:var(--rose);box-shadow:0 0 8px rgba(255,107,132,.5)}
+#batt-pct{font-size:.68rem;font-weight:700;color:var(--dim);min-width:32px;
+  text-align:right}
+
+.iconbtn{width:44px;height:44px;border-radius:50%;flex:none;
+  background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  display:flex;align-items:center;justify-content:center}
+.iconbtn svg{width:20px;height:20px;stroke:var(--text);fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.iconbtn:active{transform:scale(.92)}
+#btn-wifi.on{border-color:rgba(94,242,196,.42);box-shadow:0 0 18px rgba(15,191,139,.22)}
+#btn-wifi.on svg{stroke:var(--e-300)}
+#btn-wifi.off svg{stroke:var(--faint)}
+#btn-gear svg{stroke:var(--dim)}
+#btn-power{border-color:rgba(255,107,132,.34)}
+#btn-power svg{stroke:var(--rose)}
+
+/* ═══ Pages ═══ */
+/* One perspective for the whole content area: every panel's translateZ is
+   measured from the same camera, so lifts read as consistent depth instead of
+   each element having its own vanishing point. */
+#pages{position:fixed;top:var(--topbar);bottom:var(--tabbar);left:0;right:0;
+  padding:14px 16px;overflow:hidden;perspective:1400px;
+  perspective-origin:50% 42%}
+.page.active{transform-style:preserve-3d;animation:pageIn .34s var(--ease)}
+@keyframes pageIn{from{opacity:0;transform:translateZ(-90px) rotateX(4deg)}
+  to{opacity:1;transform:none}}
+.page{display:none;height:100%}
+.page.active{display:flex;flex-direction:column;gap:12px}
+.scrolly{overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;
+  scrollbar-width:thin;scrollbar-color:rgba(94,242,196,.26) transparent}
+.scrolly::-webkit-scrollbar{width:6px}
+.scrolly::-webkit-scrollbar-thumb{background:rgba(94,242,196,.26);border-radius:3px}
+
+/* ═══ Tab bar — Ben's rounded-top tabs, in glass ═══ */
+#tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar);display:flex;
+  gap:7px;padding:0 12px;perspective:600px;transform-style:preserve-3d;
+  background:rgba(3,8,6,.6);
+  backdrop-filter:blur(26px) saturate(150%);
+  -webkit-backdrop-filter:blur(26px) saturate(150%);
+  border-top:1px solid var(--g-line);z-index:5}
+.tab{flex:1;border:none;background:var(--g-1);color:var(--dim);
+  border:1px solid var(--g-line);border-bottom:none;
+  border-radius:18px 18px 0 0;margin-top:12px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  font-size:.62rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  transform:rotateX(9deg);transform-origin:bottom center;
+  box-shadow:0 -3px 12px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.06);
+  transition:margin-top .16s var(--ease),transform .16s var(--ease),
+             background .16s}
+.tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.tab.active{margin-top:5px;color:var(--e-100);background:var(--g-2);
+  border-color:var(--g-line-2);transform:rotateX(0deg) translateZ(12px);
+  box-shadow:inset 0 1px 0 var(--g-sheen),0 -12px 30px rgba(15,191,139,.22),
+             0 -3px 10px rgba(0,0,0,.35)}
+.tab:active{background:var(--g-2)}
+
+/* ═══ Shared ═══ */
+.seg{display:flex;background:var(--g-1);border:1px solid var(--g-line);
+  border-radius:999px;padding:5px;gap:5px;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.seg button{flex:1;border:none;background:transparent;color:var(--dim);
+  font-size:.86rem;font-weight:600;padding:12px 8px;border-radius:999px;min-height:46px}
+.seg button.on{background:linear-gradient(180deg,var(--e-400),var(--e-600));
+  color:#022018;box-shadow:0 4px 14px rgba(15,191,139,.34)}
+
+.pill-btn{border:none;border-radius:999px;padding:14px 24px;font-size:.9rem;
+  font-weight:600;min-height:50px}
+.pill-btn.blue{background:linear-gradient(180deg,var(--e-400),var(--e-600));
+  color:#022018;box-shadow:0 5px 18px rgba(15,191,139,.3)}
+.pill-btn.violet{background:linear-gradient(180deg,var(--mint),var(--e-500));
+  color:#022018;box-shadow:0 5px 18px rgba(140,255,220,.24)}
+.pill-btn.amber{background:linear-gradient(180deg,#FFD37A,var(--amber));color:#33230A;
+  box-shadow:0 5px 18px rgba(255,196,77,.26)}
+.pill-btn.outline{background:var(--g-1);color:var(--e-300);
+  border:1px solid rgba(94,242,196,.36);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.pill-btn.outline.red{color:var(--rose);border-color:rgba(255,107,132,.4)}
+.pill-btn.ghost{background:var(--g-1);color:var(--dim);border:1px solid var(--g-line);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+/* A raised edge and a shadow that collapses on press: the button travels
+   downward instead of just changing colour, which on a touchscreen is the only
+   feedback available once a finger covers the label. */
+.pill-btn{box-shadow:0 3px 0 rgba(0,0,0,.34),0 8px 20px rgba(0,0,0,.32),
+          inset 0 1px 0 rgba(255,255,255,.16);
+  transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
+.pill-btn:active{transform:translateY(3px);
+  box-shadow:0 0 0 rgba(0,0,0,.3),inset 0 2px 7px rgba(0,0,0,.4)}
+.pill-btn:disabled{opacity:.4}
+
+.field{background:rgba(3,8,6,.42);border:1px solid var(--g-line);border-radius:14px;
+  color:var(--text);padding:14px 16px;font-size:.92rem;min-height:50px;width:100%;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.field::placeholder{color:var(--faint)}
+.field:focus{border-color:rgba(94,242,196,.45);outline:none;
+  box-shadow:0 0 0 3px rgba(15,191,139,.13)}
+
+.card{background:var(--g-1);border:1px solid var(--g-line);border-radius:18px;
+  backdrop-filter:blur(22px) saturate(150%);
+  -webkit-backdrop-filter:blur(22px) saturate(150%);box-shadow:var(--lift-1)}
+
+.toggle{width:56px;height:31px;border-radius:999px;background:rgba(214,255,240,.14);
+  border:1px solid var(--g-line);position:relative;flex:none;transition:background .2s}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:23px;height:23px;
+  border-radius:50%;background:#fff;transition:transform .2s}
+.toggle.on{background:linear-gradient(90deg,var(--e-500),var(--e-300));
+  border-color:transparent;box-shadow:0 0 16px rgba(15,191,139,.4)}
+.toggle.on::after{transform:translateX(25px)}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE ORB — Siri-style flowing voice indicator
+
+   Four blurred radial gradients on different rotation and scale periods,
+   clipped to a circle. Because only transform animates, the compositor
+   handles it and the main thread stays free for the app.
+
+   Idle: slow drift, dim, the ring barely moves — Luna is awake and waiting.
+   Speaking: periods shorten, brightness rises, the surrounding bars jump.
+   ═══════════════════════════════════════════════════════════════════════ */
+/* The stage is a 3D room, not two columns. The reactor panel sits forward,
+   the transcript sits back and slightly rotated, so the eye reads a primary
+   and a secondary plane instead of two equal boxes. Static transforms only —
+   Firefox drops backdrop-filter inside an ANIMATED 3D ancestor, so the glass
+   would vanish if these were animating. */
+#face-stage{flex:1;min-height:0;display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(290px,370px);gap:20px;
+  align-items:stretch;transform-style:preserve-3d}
+@media (max-width:900px){#face-stage{grid-template-columns:minmax(0,1fr)}
+  #stage-right{display:none}}
+
+#stage-left{position:relative;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:26px;
+  border-radius:24px;background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(22px) saturate(150%);
+  -webkit-backdrop-filter:blur(22px) saturate(150%);overflow:hidden;padding:22px;
+  box-shadow:var(--lift-3);transform-style:preserve-3d;
+  transform:translateZ(30px)}
+#stage-left::after{content:'';position:absolute;left:0;right:0;top:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--g-sheen) 30%,
+             var(--g-sheen) 70%,transparent)}
+
+/* ══════════════════════════════════════════════════════════════════════
+   THE REACTOR — the HUD centrepiece
+
+   Concentric instrument rings, counter-rotating, each on its own Z plane
+   inside one shared perspective, so they genuinely pass in front of and
+   behind each other. Built as layered SVG because arcs with gaps, tick
+   marks and dashed rings are what SVG is for; CSS borders cannot do them
+   cleanly at this size.
+
+   The layers, back to front:
+     -60px  hex field        the depth the eye reads first
+     -34px  tick collar      60 marks, slow, gives scale
+     -12px  dashed ring      counter-rotates against the collar
+       0    core             hexagonal, pulses with the voice
+     +18px  arc segments     fast, the "working" layer
+     +34px  reticle          crosshair and corner brackets, dead still
+
+   The still reticle matters: with everything moving, a fixed element is what
+   the eye anchors to, and its stillness is what makes the rest read as depth
+   rather than as noise.
+   ══════════════════════════════════════════════════════════════════════ */
+#orb{position:relative;width:min(46vh,332px);aspect-ratio:1;flex:none;
+  transform-style:preserve-3d;animation:reactorTilt 22s ease-in-out infinite}
+@keyframes reactorTilt{
+  0%,100%{transform:rotateX(14deg) rotateY(-9deg)}
+  50%    {transform:rotateX(-7deg) rotateY(11deg)}}
+#orb .lay{position:absolute;inset:0;transform-style:preserve-3d;
+  will-change:transform}
+#orb svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+#orb .st{fill:none;stroke:var(--e-300);vector-effect:non-scaling-stroke}
+
+/* depth planes */
+#l-hex   {transform:translateZ(-60px)}
+#l-collar{transform:translateZ(-34px)}
+#l-dash  {transform:translateZ(-12px)}
+#l-core  {transform:translateZ(0)}
+#l-arc   {transform:translateZ(18px)}
+#l-ret   {transform:translateZ(34px)}
+
+/* rotation — each layer counter-turns against its neighbour */
+#l-collar>svg{animation:spinCW 46s linear infinite}
+#l-dash>svg  {animation:spinCCW 27s linear infinite}
+#l-arc>svg   {animation:spinCW 13s linear infinite}
+#l-hex>svg   {animation:spinCCW 90s linear infinite}
+@keyframes spinCW {to{transform:rotate(360deg)}}
+@keyframes spinCCW{to{transform:rotate(-360deg)}}
+
+/* the core reads the voice */
+#l-core .glow{animation:corePulse 3.4s ease-in-out infinite}
+@keyframes corePulse{0%,100%{opacity:.5;transform:scale(.96)}
+  50%{opacity:.92;transform:scale(1.04)}}
+
+/* ── reactor states ────────────────────────────────────────────────────
+   Each state changes the reactor's SPEED and COLOUR, not its shape, so the
+   transitions read as the same instrument working harder rather than as the
+   screen swapping graphics.
+
+   listening  slightly quicker than standby, cyan-green — attentive
+   thinking    amber, arcs sprint, core pulses fast — visibly working, and
+               unmistakably different from idle, which was the whole problem
+   speaking    mint, everything fast, glow at maximum                        */
+#face-stage.st-listening #l-arc>svg {animation-duration:9s}
+#face-stage.st-listening #orb .st   {stroke:var(--e-300)}
+#face-stage.st-listening #l-core .glow{animation-duration:2.2s}
+
+#face-stage.st-thinking #l-arc>svg   {animation-duration:1.6s}
+#face-stage.st-thinking #l-dash>svg  {animation-duration:5s}
+#face-stage.st-thinking #l-collar>svg{animation-duration:11s}
+#face-stage.st-thinking #l-core .glow{animation-duration:.8s}
+#face-stage.st-thinking #orb .st     {stroke:var(--amber)}
+#face-stage.st-thinking #orb{filter:drop-shadow(0 0 20px rgba(255,196,77,.45))}
+#face-stage.st-thinking #wave span   {background:var(--amber);
+  animation-duration:.6s;opacity:.8}
+
+#face-stage.st-wake #orb{filter:drop-shadow(0 0 26px rgba(140,255,220,.5))}
+#face-stage.st-wake #l-core .glow{animation-duration:.6s}
+
+#face-stage.speaking #l-arc>svg   {animation-duration:3.2s}
+#face-stage.speaking #l-dash>svg  {animation-duration:7s}
+#face-stage.speaking #l-collar>svg{animation-duration:14s}
+#face-stage.speaking #l-core .glow{animation-duration:.7s}
+#face-stage.speaking #orb .st{stroke:var(--mint)}
+#face-stage.speaking #orb{filter:drop-shadow(0 0 22px rgba(94,242,196,.45))}
+
+/* live level bars, flanking the reactor — reuses the 14 #wave spans */
+#wave{position:absolute;left:50%;top:50%;width:min(46vh,332px);
+  height:min(46vh,332px);transform:translate(-50%,-50%) translateZ(46px);
+  pointer-events:none;transform-style:preserve-3d}
+#wave span{position:absolute;left:50%;top:50%;width:2px;height:10px;
+  border-radius:1px;background:var(--e-300);opacity:.3;
+  animation:lvl 2.4s ease-in-out infinite}
+@keyframes lvl{0%,100%{height:6px;opacity:.22}50%{height:18px;opacity:.72}}
+#face-stage.speaking #wave span{animation-duration:.5s;opacity:.9;
+  background:var(--mint);box-shadow:0 0 9px var(--mint)}
+
+/* HUD readouts around the reactor */
+#hud-top,#hud-bot{position:absolute;left:50%;transform:translateX(-50%);
+  font-family:ui-monospace,monospace;font-size:.56rem;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--faint);white-space:nowrap;
+  display:flex;gap:16px;align-items:center}
+#hud-top{top:6px} #hud-bot{bottom:6px}
+#hud-top b,#hud-bot b{color:var(--e-300);font-weight:600}
+
+#caption{max-width:min(88%,620px);text-align:center;font-size:1.45rem;
+  font-weight:300;line-height:1.4;letter-spacing:-.01em;min-height:2.5em;
+  display:flex;align-items:center;justify-content:center}
+#caption.idle{font-size:.68rem;font-weight:700;letter-spacing:.3em;
+  text-transform:uppercase;color:var(--faint)}
+
+/* transcript panel */
+#stage-right{display:flex;flex-direction:column;border-radius:24px;
+  background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(22px) saturate(150%);
+  -webkit-backdrop-filter:blur(22px) saturate(150%);overflow:hidden;
+  box-shadow:var(--lift-1);
+  transform:translateZ(-26px) rotateY(-4deg);transform-origin:right center}
+#stage-right .hd{padding:15px 18px 11px;border-bottom:1px solid var(--g-line);
+  display:flex;align-items:center;gap:9px}
+#facelog{flex:1;min-height:0;overflow-y:auto;padding:6px 14px 14px;
+  display:flex;flex-direction:column;
+  scrollbar-width:thin;scrollbar-color:rgba(94,242,196,.26) transparent}
+#facelog::-webkit-scrollbar{width:5px}
+#facelog::-webkit-scrollbar-thumb{background:rgba(94,242,196,.26);border-radius:3px}
+#facelog .line{padding:11px 2px;border-bottom:1px solid rgba(214,255,240,.06);
+  display:flex;flex-direction:column;gap:5px}
+#facelog .line .who{display:flex;align-items:center;gap:8px}
+#facelog .line i{font-size:.55rem;font-style:normal;font-weight:700;
+  letter-spacing:.16em;padding:3px 8px;border-radius:999px}
+#facelog .from-luna i{color:#022018;background:var(--e-300)}
+#facelog .from-you i{color:var(--e-100);background:rgba(214,255,240,.13)}
+#facelog .line b{font-size:.6rem;color:var(--faint);font-weight:500}
+#facelog .line span{font-size:.94rem;line-height:1.5}
+#facelog .from-you span{color:var(--dim)}
+#facelog:empty::after{content:'Nothing said yet. Call Luna by name to start.';
+  font-size:.8rem;color:var(--faint);padding:22px 2px;text-align:center}
+
+/* ═══ Move ═══ */
+#motion-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0}
+#dpad-wrap{display:flex;align-items:center;justify-content:center;border-radius:22px;
+  background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
+#dpad{display:grid;grid-template-columns:repeat(3,80px);
+  grid-template-rows:repeat(3,80px);gap:10px}
+#dpad{transform-style:preserve-3d}
+#dpad button{border:1px solid var(--g-line);background:var(--g-1);border-radius:20px;
+  display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  box-shadow:0 4px 0 rgba(0,0,0,.4),0 10px 24px rgba(0,0,0,.34),
+             inset 0 1px 0 rgba(255,255,255,.12);
+  transition:transform .09s var(--ease),box-shadow .09s var(--ease)}
+#dpad button svg{width:26px;height:26px;stroke:var(--e-300);fill:none;
+  stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+#dpad button:active{background:linear-gradient(180deg,var(--e-400),var(--e-600));
+  border-color:transparent;transform:translateY(4px);
+  box-shadow:0 0 26px rgba(15,191,139,.5),inset 0 2px 8px rgba(2,32,24,.5)}
+#dpad button:active svg{stroke:#022018}
+#dpad .stop{border-color:rgba(255,107,132,.3)}
+#dpad .stop svg{stroke:var(--rose)}
+#dpad .stop:active{background:var(--rose);box-shadow:0 0 24px rgba(255,107,132,.45)}
+#dpad .stop:active svg{stroke:#fff}
+#dpad .blank{visibility:hidden}
+#motion-side{display:flex;flex-direction:column;gap:12px;min-height:0}
+.rowcard{background:var(--g-1);border:1px solid var(--g-line);border-radius:18px;
+  padding:15px 18px;display:flex;flex-direction:column;gap:10px;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:var(--lift-1)}
+.rowcard .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.rowcard .val{font-size:1.5rem;font-weight:200}
+.rowcard .val small{font-size:.78rem;color:var(--dim);font-weight:400}
+
+/* ═══ Sliders ═══ */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;
+  background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:999px;
+  background:linear-gradient(90deg,var(--e-400) var(--p,50%),
+             rgba(214,255,240,.13) var(--p,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;
+  border-radius:50%;background:#fff;margin-top:-10px;
+  box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 0 5px rgba(15,191,139,.18)}
+input[type=range]::-moz-range-track{height:8px;border-radius:999px;
+  background:rgba(214,255,240,.13)}
+input[type=range]::-moz-range-progress{height:8px;border-radius:999px;
+  background:var(--e-400)}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border:none;
+  border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.5)}
+.jrow{display:flex;flex-direction:column;gap:1px;padding:8px 0}
+.jrow .lab{display:flex;justify-content:space-between;align-items:baseline}
+.jrow .lab span{font-size:.7rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim)}
+.jrow .lab b{font-size:.8rem;font-weight:600;color:var(--e-100)}
+
+/* ═══ Pose ═══ */
+#action-wrap{flex:1;display:grid;grid-template-columns:1.1fr .9fr;gap:14px;min-height:0}
+#action-left,#action-right{display:flex;flex-direction:column;gap:11px;min-height:0}
+#action-sliders,#finger-sliders{flex:1;min-height:0;overflow-y:auto;padding:2px 10px 2px 2px;
+  border-radius:18px;background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+#action-sliders>*,#finger-sliders>*{padding-left:14px;padding-right:4px}
+#action-tools{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+#action-bottom{display:flex;gap:9px}
+#action-bottom .pill-btn{flex:1}
+
+/* ═══ Voice ═══ */
+#audio-wrap{flex:1;display:grid;grid-template-columns:.85fr 1.15fr;gap:14px;min-height:0}
+#audio-left{display:flex;flex-direction:column;gap:10px;min-height:0;
+  overflow-y:auto;padding-right:4px}
+#audio-right{display:flex;flex-direction:column;gap:11px;min-height:0}
+#qa-head{display:grid;grid-template-columns:34px 1fr 1fr 46px;gap:10px;
+  padding:0 6px 9px;border-bottom:1px solid var(--g-line)}
+#faces-head{display:grid;grid-template-columns:1fr 1fr 46px;gap:10px;
+  padding:0 6px 9px;border-bottom:1px solid var(--g-line)}
+#qa-head span,#faces-head span{font-size:.58rem;font-weight:700;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--faint)}
+#qa-rows,#face-rows{flex:1;min-height:0;overflow-y:auto;padding:6px 6px 6px 0;
+  perspective:900px}
+
+/* NOTE: these class names match what the JS actually emits — .qa-row and
+   .face-row, not .qarow. The previous stylesheet named them wrongly, which is
+   why the delete buttons appeared as unstyled emoji. */
+.qa-row,.face-row{display:grid;gap:10px;align-items:center;padding:9px 10px;
+  margin-bottom:8px;border-radius:16px;
+  background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  box-shadow:var(--lift-1);transform-style:preserve-3d;
+  transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
+.qa-row{grid-template-columns:34px 1fr 1fr 46px}
+.face-row{grid-template-columns:1fr 1fr 46px}
+.qa-row:focus-within,.face-row:focus-within{
+  transform:translateZ(14px);box-shadow:var(--lift-2);border-color:var(--g-line-2)}
+.qa-row .num{font-size:.72rem;color:var(--faint);text-align:center}
+.qa-row .field,.face-row .field{min-height:46px;border-radius:12px}
+
+/* ── the dustbin ────────────────────────────────────────────────────────
+   A pressable object, not a character. Round, raised, rose-tinted, and it
+   presses INTO the surface on touch — deletion should feel like a deliberate
+   physical act, because it cannot be undone. */
+.delbtn{width:46px;height:46px;border-radius:14px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,rgba(255,107,132,.16),rgba(255,107,132,.06));
+  border:1px solid rgba(255,107,132,.34);color:var(--rose);
+  box-shadow:0 3px 0 rgba(120,20,38,.55),0 6px 14px rgba(0,0,0,.4),
+             inset 0 1px 0 rgba(255,255,255,.14);
+  transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
+.delbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.delbtn:active{transform:translateY(3px);
+  background:linear-gradient(180deg,rgba(255,107,132,.34),rgba(255,107,132,.2));
+  box-shadow:0 0 0 rgba(120,20,38,.5),inset 0 2px 6px rgba(70,6,18,.6)}
+
+/* ── face cell: thumbnail + capture / upload ───────────────────────────── */
+.facecell{display:flex;align-items:center;gap:11px;min-width:0}
+.thumbbox{width:58px;height:58px;flex:none;border-radius:14px;overflow:hidden;
+  position:relative;display:flex;align-items:center;justify-content:center;
+  background:rgba(3,8,6,.5);border:1px solid var(--g-line);
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.5)}
+.thumbbox svg{width:26px;height:26px;stroke:var(--faint);fill:none;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round}
+.thumbbox img{width:100%;height:100%;object-fit:cover}
+.thumbbox.has{border-color:rgba(94,242,196,.5);
+  box-shadow:0 0 16px rgba(15,191,139,.28),inset 0 1px 0 rgba(255,255,255,.12)}
+/* the 1.5s sensor warm-up needs to be visible or the panel looks broken */
+.thumbbox.shooting::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent,rgba(94,242,196,.5),transparent);
+  animation:scanline 1s linear infinite}
+@keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(100%)}}
+
+.facebtns{display:flex;flex-direction:column;gap:6px;min-width:0}
+.capbtn,.upbtn{display:flex;align-items:center;gap:7px;padding:8px 12px;
+  border-radius:11px;font-size:.72rem;font-weight:600;min-height:34px;
+  cursor:pointer;white-space:nowrap;
+  border:1px solid var(--g-line);background:var(--g-1);color:var(--dim);
+  box-shadow:0 2px 0 rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);
+  transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
+.capbtn svg,.upbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;
+  stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* Capture leads, because the robot's own camera gives the recogniser the
+   angle and lighting it will actually work in. */
+.capbtn{color:var(--e-100);border-color:rgba(94,242,196,.4);
+  background:linear-gradient(180deg,rgba(34,223,166,.2),rgba(15,191,139,.08))}
+.capbtn:active,.upbtn:active{transform:translateY(2px);
+  box-shadow:0 0 0 rgba(0,0,0,.3),inset 0 2px 5px rgba(0,0,0,.4)}
+.capbtn.busy{opacity:.6}
+.capbtn.busy span::after{content:'…'}
+#audio-actions{display:flex;gap:9px}
+#audio-actions .pill-btn{flex:1}
+.switchrow{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 17px;border-radius:18px;background:var(--g-1);
+  border:1px solid var(--g-line);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:var(--lift-1)}
+.switchrow .txt{display:flex;flex-direction:column;gap:3px}
+.switchrow .txt b{font-size:.87rem;font-weight:600}
+.switchrow .txt small{font-size:.69rem;color:var(--dim)}
+
+/* ═══ Faces ═══ */
+#facepg-wrap{flex:1;display:flex;flex-direction:column;gap:11px;min-height:0}
+
+/* ═══ Media ═══ */
+#media-top{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+#upload-hint{font-size:.71rem;color:var(--dim);flex:1;min-width:170px}
+#upload-prog{font-size:.71rem;color:var(--e-300)}
+#online-row{display:flex;gap:10px}
+#online-row .field{flex:1}
+#video-grid,#yt-results{display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(174px,1fr));gap:12px;padding-bottom:8px}
+.vcard{border-radius:18px;overflow:hidden;display:flex;flex-direction:column;
+  background:var(--g-1);border:1px solid var(--g-line);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.vcard .thumb{aspect-ratio:16/9;background:rgba(3,8,6,.5);position:relative;
+  display:flex;align-items:center;justify-content:center}
+.vcard .thumb img{width:100%;height:100%;object-fit:cover}
+.vcard .thumb svg{width:30px;height:30px;stroke:var(--faint);fill:none;stroke-width:1.6}
+.vcard .meta{padding:10px 13px;display:flex;flex-direction:column;gap:3px}
+.vcard .meta .nm{font-size:.79rem;line-height:1.3;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.vcard .meta .sz{font-size:.64rem;color:var(--faint)}
+.vcard .acts{display:flex;border-top:1px solid var(--g-line)}
+.vcard .acts button{flex:1;border:none;background:transparent;color:var(--e-300);
+  padding:11px 0;font-size:.75rem;font-weight:600;min-height:44px}
+.vcard .acts button.rm{color:var(--rose);border-left:1px solid var(--g-line)}
+#video-empty{font-size:.84rem;color:var(--faint);padding:26px 4px}
+.sechead{display:flex;align-items:center;gap:11px;padding:1px 0 6px}
+.sechead .eyebrow{white-space:nowrap}
+.sechead .rule{flex:1;height:1px;
+  background:linear-gradient(90deg,var(--g-line-2),transparent)}
+
+/* ═══ Players ═══ */
+#player,#yt-player{position:fixed;inset:0;background:#000;z-index:60;
+  display:none;flex-direction:column}
+#player.open,#yt-player.open{display:flex}
+#vid{flex:1;width:100%;background:#000;min-height:0}
+#yt-frame{flex:1;width:100%;border:none;background:#000;min-height:0}
+#player-bar,#yt-bar{height:78px;display:flex;align-items:center;gap:12px;
+  padding:0 18px;background:rgba(3,8,6,.7);
+  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
+  border-top:1px solid var(--g-line)}
+#player-title,#yt-title{flex:1;font-size:.84rem;color:var(--dim);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+/* ═══ Modals ═══ */
+.modal{position:fixed;inset:0;background:rgba(2,6,5,.66);z-index:70;
+  display:none;align-items:center;justify-content:center;padding:26px;
+  perspective:1200px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.modal.open{display:flex}
+.modal .box{background:rgba(8,20,15,.72);border:1px solid var(--g-line-2);
+  border-radius:26px;padding:26px;max-width:520px;width:100%;position:relative;
+  max-height:88vh;overflow-y:auto;
+  backdrop-filter:blur(30px) saturate(150%);
+  -webkit-backdrop-filter:blur(30px) saturate(150%);
+  box-shadow:var(--lift-3);animation:modalIn .26s var(--ease)}
+@keyframes modalIn{from{opacity:0;transform:translateY(16px) rotateX(7deg) scale(.97)}
+  to{opacity:1;transform:none}}
+.modal .box h2{font-size:1.08rem;font-weight:400;line-height:1.4;margin-bottom:18px;
+  padding-right:36px}
+.modal .x{position:absolute;top:16px;right:16px;width:38px;height:38px;
+  border-radius:50%;border:1px solid var(--g-line);background:var(--g-1);
+  color:var(--dim);font-size:.95rem}
+.modal .stack{display:flex;flex-direction:column;gap:10px}
+.modal .kv{display:flex;justify-content:space-between;gap:12px;padding:11px 0;
+  border-bottom:1px solid var(--g-line);font-size:.85rem}
+.modal .kv span{color:var(--dim)}
+.modal .kv b{font-weight:600;color:var(--e-100)}
+.modal label{display:block;margin:14px 0 7px}
+
+/* ═══ Toast ═══ */
+#toast{position:fixed;left:50%;bottom:calc(var(--tabbar) + 20px);
+  transform:translateX(-50%);background:rgba(8,20,15,.8);
+  border:1px solid var(--g-line-2);color:var(--text);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  padding:13px 24px;border-radius:999px;font-size:.85rem;z-index:90;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+  white-space:nowrap;box-shadow:0 12px 34px rgba(0,0,0,.5)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(-8px)}
+
+/* ═══ WiFi first-run ═══ */
+#wifi-setup{position:fixed;inset:0;background:rgba(3,8,6,.9);z-index:80;
+  display:none;flex-direction:column;padding:30px;
+  backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px)}
+#wifi-setup.open{display:flex}
+#ws-nets{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;
+  gap:8px;margin:14px 0}
+.wsnet{display:flex;align-items:center;gap:13px;padding:15px 18px;
+  background:var(--g-1);border:1px solid var(--g-line);border-radius:16px;
+  min-height:56px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.wsnet.sel{border-color:rgba(94,242,196,.5);box-shadow:0 0 22px rgba(15,191,139,.2)}
+.wsnet .nm{flex:1;font-size:.92rem}
+.wsnet .sig{font-size:.85rem;color:var(--e-300);letter-spacing:1px}
+.wsnet .lk{font-size:.7rem;color:var(--faint)}
+#ws-status{font-size:.8rem;color:var(--dim);min-height:1.3em}
+#osk{display:none}
+</style>
+</head>
+<body>
+
+<div id="bg-aura"><i></i><i></i><i></i></div>
+<div id="bg-grid"></div>
+<div id="hud-frame" aria-hidden="true">
+  <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+  <i class="scan"></i>
+</div>
+
+<!-- ═══ Status bar ═══ -->
+<header id="topbar">
+  <div id="logo">
+    <img src="/display/logo.png" alt="" onerror="this.style.display='none'">
+    <span class="wm">Lu<b>na</b></span>
+  </div>
+  <div class="grow"></div>
+  <div class="chip live" id="chip-mic"><span class="dot"></span><span>Listening</span></div>
+  <div class="chip" id="chip-net"><span class="dot"></span><span>Offline</span></div>
+  <div id="batt" title="Battery">
+    <div class="bar"><div id="batt-fill" style="width:100%"></div></div>
+    <span id="batt-pct" class="mono">--</span>
+  </div>
+  <button class="iconbtn off" id="btn-wifi" onclick="wsOpen()" aria-label="Network">
+    <svg viewBox="0 0 24 24"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5.5 5.5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+  </button>
+  <button class="iconbtn" id="btn-gear" onclick="openModal('wifi-modal')" aria-label="Settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.6 13.5a7.7 7.7 0 0 0 0-3l2-1.2-2-3.4-2 1.2a7.7 7.7 0 0 0-2.6-1.5V3h-4v2.6a7.7 7.7 0 0 0-2.6 1.5l-2-1.2-2 3.4 2 1.2a7.7 7.7 0 0 0 0 3l-2 1.2 2 3.4 2-1.2a7.7 7.7 0 0 0 2.6 1.5V21h4v-2.6a7.7 7.7 0 0 0 2.6-1.5l2 1.2 2-3.4z"/></svg>
+  </button>
+  <button class="iconbtn" id="btn-power" onclick="openModal('power-modal')" aria-label="Power">
+    <svg viewBox="0 0 24 24"><path d="M12 3v9M7.5 6.8a7.5 7.5 0 1 0 9 0"/></svg>
+  </button>
+</header>
+
+<div id="pages">
+
+  <!-- ═══ LUNA — orb + transcript ═══ -->
+  <section class="page active" id="page-ben">
+    <div id="face-stage">
+      <div id="stage-left">
+        <div id="orb">
+          <div class="lay" id="l-hex"><svg viewBox="0 0 200 200">
+            <g class="st" stroke-width=".5" opacity=".34">
+              <circle cx="100" cy="100" r="94"/><circle cx="100" cy="100" r="72"/>
+              <path d="M100 6v188M6 100h188M34 34l132 132M166 34L34 166"/>
+            </g></svg></div>
+
+          <div class="lay" id="l-collar"><svg viewBox="0 0 200 200">
+            <g class="st" stroke-width="1" opacity=".55" id="ticks"></g>
+          </svg></div>
+
+          <div class="lay" id="l-dash"><svg viewBox="0 0 200 200">
+            <g class="st" stroke-width="1.4" opacity=".7">
+              <circle cx="100" cy="100" r="64" stroke-dasharray="3 9"/>
+              <circle cx="100" cy="100" r="55" stroke-dasharray="18 26" opacity=".6"/>
+            </g></svg></div>
+
+          <div class="lay" id="l-core"><svg viewBox="0 0 200 200">
+            <defs>
+              <radialGradient id="coreGrad">
+                <stop offset="0%" stop-color="#D7FFF2" stop-opacity=".95"/>
+                <stop offset="42%" stop-color="#22DFA6" stop-opacity=".55"/>
+                <stop offset="100%" stop-color="#0A8F69" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <circle class="glow" cx="100" cy="100" r="42" fill="url(#coreGrad)"/>
+            <g class="st" stroke-width="1.6">
+              <path d="M100 66l25.5 15v30L100 126 74.5 111V81z" opacity=".9"/>
+              <path d="M100 78l15 8.6v17.2L100 112l-15-8.2V86.6z" opacity=".6"/>
+            </g>
+            <circle cx="100" cy="100" r="5.5" fill="#D7FFF2"/>
+          </svg></div>
+
+          <div class="lay" id="l-arc"><svg viewBox="0 0 200 200">
+            <g class="st" stroke-width="2.4" stroke-linecap="round">
+              <path d="M100 18a82 82 0 0 1 71 41" opacity=".95"/>
+              <path d="M171 141a82 82 0 0 1-71 41" opacity=".6"/>
+              <path d="M29 141a82 82 0 0 1-.5-82" opacity=".35"/>
+            </g>
+            <g class="st" stroke-width="1.2" opacity=".5">
+              <path d="M100 30a70 70 0 0 1 60.6 35"/>
+            </g></svg></div>
+
+          <div class="lay" id="l-ret"><svg viewBox="0 0 200 200">
+            <g class="st" stroke-width="1.2" opacity=".8">
+              <path d="M100 40v14M100 146v14M40 100h14M146 100h14"/>
+              <path d="M22 42V22h20M178 42V22h-20M22 158v20h20M178 158v20h-20"
+                    stroke-width="1.6" opacity=".65"/>
+            </g></svg></div>
+
+          <div id="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        </div>
+        <div id="hud-top"><span>SYS</span><b id="hud-state">STANDBY</b>
+          <span>·</span><span>VOICE</span><b id="hud-model">READY</b></div>
+        <div id="voice-overlay">
+          <div id="caption" class="idle">Listening</div>
+        </div>
+        <div id="hud-bot"><span>LUNA</span><b>MK I</b><span>·</span>
+          <span id="hud-clock" class="mono">--:--</span></div>
+      </div>
+      <div id="stage-right">
+        <div class="hd"><span class="eyebrow">Conversation</span><span class="rule" style="flex:1;height:1px;background:linear-gradient(90deg,var(--g-line-2),transparent)"></span></div>
+        <div id="facelog"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ MOVE ═══ -->
+  <section class="page" id="page-motion">
+    <div id="motion-grid">
+      <div id="dpad-wrap">
+        <div id="dpad">
+          <div class="blank"></div>
+          <button ontouchstart="api('/move?dir=forward')" onmousedown="api('/move?dir=forward')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Forward"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+          <div class="blank"></div>
+          <button ontouchstart="api('/move?dir=left')" onmousedown="api('/move?dir=left')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Left"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg></button>
+          <button class="stop" onclick="api('/move?dir=stop')" aria-label="Stop"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg></button>
+          <button ontouchstart="api('/move?dir=right')" onmousedown="api('/move?dir=right')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Right"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+          <div class="blank"></div>
+          <button ontouchstart="api('/move?dir=back')" onmousedown="api('/move?dir=back')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+          <div class="blank"></div>
+        </div>
+      </div>
+      <div id="motion-side">
+        <div class="rowcard">
+          <div class="top">
+            <span class="eyebrow">Drive speed</span>
+            <span class="val mono"><b id="speed-out">50</b><small>%</small></span>
+          </div>
+          <input type="range" id="speed" min="0" max="100" value="50"
+                 oninput="paint(this);$('#speed-out').textContent=this.value;thr('sp',()=>api('/speed?value='+this.value))">
+        </div>
+        <div class="switchrow">
+          <div class="txt"><b>Obstacle stop</b><small>Halt before hitting something</small></div>
+          <button class="toggle on" onclick="tglObstacle(this)" aria-label="Obstacle stop"></button>
+        </div>
+        <div class="switchrow">
+          <div class="txt"><b>Face tracking</b><small>Follow the nearest face</small></div>
+          <button class="toggle" id="tgl-track" onclick="tglTrack(this,'#tgl-track2')" aria-label="Face tracking"></button>
+        </div>
+        <div class="rowcard" style="flex:1;justify-content:flex-end">
+          <button class="pill-btn outline red" onclick="doEstop()">Emergency stop</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ POSE ═══ -->
+  <section class="page" id="page-action">
+    <div id="action-wrap">
+      <div id="action-left">
+        <div class="seg" id="hand-seg">
+          <button class="on" data-hand="left">Left arm</button>
+          <button data-hand="right">Right arm</button>
+          <button data-hand="both">Both arms</button>
+        </div>
+        <div id="action-sliders" class="scrolly"></div>
+      </div>
+      <div id="action-right">
+        <div class="sechead"><span class="eyebrow">Fingers</span><span class="rule"></span></div>
+        <div id="finger-sliders" class="scrolly"></div>
+        <div id="action-tools">
+          <button class="pill-btn ghost" onclick="api('/home');toast('Homing')">Home</button>
+          <button class="pill-btn ghost" onclick="savePose()">Save pose</button>
+          <button class="pill-btn ghost" onclick="api('/loop_undo');toast('Last pose removed')">Undo</button>
+          <button class="pill-btn ghost" onclick="confirmAct('Clear all poses','This deletes every saved pose. It cannot be undone.','/loop_delete')">Clear</button>
+        </div>
+        <div id="action-bottom">
+          <button class="pill-btn amber" id="loop-btn" onclick="toggleLoopRun(this)">Run sequence</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ VOICE ═══ -->
+  <section class="page" id="page-audio">
+    <div id="audio-wrap">
+      <div id="audio-left" class="scrolly">
+        <div class="sechead"><span class="eyebrow">Identity</span><span class="rule"></span></div>
+        <label class="eyebrow" for="robot-name">Name</label>
+        <input class="field" id="robot-name" placeholder="Luna">
+        <label class="eyebrow" for="welcome-speech">Greeting</label>
+        <input class="field" id="welcome-speech" placeholder="Hello, I am Luna">
+        <div class="rowcard" style="margin-top:4px">
+          <div class="top">
+            <span class="eyebrow">Volume</span>
+            <span class="val mono"><b id="vol-out">100</b><small>%</small></span>
+          </div>
+          <input type="range" id="vol" min="0" max="100" value="100"
+                 oninput="paint(this);$('#vol-out').textContent=this.value;thr('vol',()=>api('/settings?volume='+this.value))">
+        </div>
+        <div class="switchrow" style="margin-top:4px">
+          <div class="txt"><b>Online answers</b><small>Ask the internet when she doesn't know</small></div>
+          <button class="toggle on" id="tgl-chat" onclick="tglChat(this)" aria-label="Online answers"></button>
+        </div>
+        <button class="pill-btn blue" style="margin-top:4px" onclick="saveAudio()">Save identity</button>
+      </div>
+      <div id="audio-right">
+        <div class="sechead"><span class="eyebrow">Things she knows</span><span class="rule"></span></div>
+        <div id="qa-head"><span>#</span><span>Question</span><span>Answer</span><span></span></div>
+        <div id="qa-rows" class="scrolly"></div>
+        <div id="audio-actions">
+          <button class="pill-btn ghost" onclick="addQaRow()">Add</button>
+          <button class="pill-btn blue" onclick="saveQa()">Save answers</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FACES ═══ -->
+  <section class="page" id="page-face">
+    <div id="facepg-wrap">
+      <div class="switchrow">
+        <div class="txt"><b>Face tracking</b><small>Her head follows the nearest person</small></div>
+        <button class="toggle" id="tgl-track2" onclick="tglTrack(this,'#tgl-track')" aria-label="Face tracking"></button>
+      </div>
+      <div class="sechead"><span class="eyebrow">People she recognises</span><span class="rule"></span></div>
+      <div id="faces-head"><span>#</span><span>Photo</span><span>What she says</span><span></span></div>
+      <div id="face-rows" class="scrolly"></div>
+      <div id="audio-actions">
+        <button class="pill-btn ghost" onclick="addFaceRow()">Add person</button>
+        <button class="pill-btn blue" onclick="saveFaces()">Save people</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ MEDIA ═══ -->
+  <section class="page" id="page-media">
+    <div id="media-top">
+      <label class="pill-btn blue" style="cursor:pointer">
+        Upload video
+        <input type="file" id="vfile" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogv,.m4v" hidden>
+      </label>
+      <span id="upload-hint">MP4 or WebM play best. You can also upload from your phone at this address.</span>
+      <span id="upload-prog" class="mono"></span>
+    </div>
+    <div id="online-row">
+      <input class="field" id="yt-query" placeholder="Search online videos, or just ask Luna out loud">
+      <button class="pill-btn blue" onclick="searchOnline()">Search</button>
+    </div>
+    <div class="scrolly" style="flex:1">
+      <div id="yt-results"></div>
+      <div id="video-grid"></div>
+      <div id="video-empty">No videos yet. Upload one and it plays right here on Luna's screen.</div>
+    </div>
+  </section>
+</div>
+
+<!-- ═══ Tabs ═══ -->
+<nav id="tabbar">
+  <button class="tab active" data-page="ben">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 20.5a8.5 8.5 0 0 0 0-17"/></svg>
+    Luna
+  </button>
+  <button class="tab" data-page="motion">
+    <svg viewBox="0 0 24 24"><circle cx="7" cy="17" r="3"/><circle cx="17" cy="17" r="3"/><path d="M7 14V9a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v5"/></svg>
+    Move
+  </button>
+  <button class="tab" data-page="action">
+    <svg viewBox="0 0 24 24"><path d="M8 21V11m0 0V6a2 2 0 1 1 4 0v5m0 0V5a2 2 0 1 1 4 0v6m0 0V8a2 2 0 1 1 4 0v8a5 5 0 0 1-5 5H8a4 4 0 0 1-4-4v-2"/></svg>
+    Pose
+  </button>
+  <button class="tab" data-page="audio">
+    <svg viewBox="0 0 24 24"><path d="M12 3v18M7 8v8M17 8v8M2.5 11v2M21.5 11v2"/></svg>
+    Voice
+  </button>
+  <button class="tab" data-page="face">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="9.5" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/><rect x="3" y="3" width="18" height="18" rx="5"/></svg>
+    Faces
+  </button>
+  <button class="tab" data-page="media">
+    <svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="3.5"/><path d="M10.5 9.5l5 2.5-5 2.5z"/></svg>
+    Media
+  </button>
+</nav>
+
+<!-- ═══ Local video player ═══ -->
+<div id="player">
+  <video id="vid" controls playsinline preload="auto"></video>
+  <div id="player-bar">
+    <span id="player-title" class="mono"></span>
+    <button class="pill-btn ghost" id="player-loop" onclick="toggleLoop(this)">Loop: off</button>
+    <button class="pill-btn blue" onclick="stopVideo()">Close</button>
+  </div>
+</div>
+
+<!-- ═══ YouTube player ═══ -->
+<div id="yt-player">
+  <iframe id="yt-frame" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>
+  <div id="yt-bar">
+    <span id="yt-title"></span>
+    <button class="pill-btn blue" onclick="closeYouTube()">Close</button>
+  </div>
+</div>
+
+<!-- ═══ Power ═══ -->
+<div class="modal" id="power-modal"><div class="box">
+  <button class="x" onclick="closeModal('power-modal')">✕</button>
+  <h2>Shut Luna down?</h2>
+  <div class="stack">
+    <button class="pill-btn outline red" onclick="doEstop()">Emergency stop</button>
+    <button class="pill-btn ghost" onclick="api('/restart');closeModal('power-modal');notice('Restarting','Luna will be back in about a minute.')">Restart</button>
+    <button class="pill-btn blue" onclick="api('/shutdown');closeModal('power-modal');notice('Shutting down','Luna is parking her arms and powering off.')">Shut down</button>
+  </div>
+</div></div>
+
+<!-- ═══ Network ═══ -->
+<div class="modal" id="wifi-modal"><div class="box">
+  <button class="x" onclick="closeModal('wifi-modal')">✕</button>
+  <h2>Network</h2>
+  <div class="kv"><span>Factory network</span><b>LunaRobot</b></div>
+  <div class="kv"><span>Factory password</span><b>luna1234</b></div>
+  <div class="kv"><span>Robot address</span><b class="mono">192.168.4.1</b></div>
+  <label class="eyebrow" for="wifi-ssid">New network name</label>
+  <input class="field" id="wifi-ssid" placeholder="Network name">
+  <label class="eyebrow" for="wifi-pass">New password</label>
+  <input class="field" id="wifi-pass" placeholder="At least 8 characters">
+  <div class="stack" style="margin-top:16px">
+    <button class="pill-btn blue" onclick="uploadWifi()">Update network</button>
+  </div>
+</div></div>
+
+<!-- ═══ Confirm ═══ -->
+<div class="modal" id="confirm-modal"><div class="box">
+  <button class="x" onclick="closeModal('confirm-modal')">✕</button>
+  <h2 id="m-title">Are you sure?</h2>
+  <p id="m-text" style="font-size:.87rem;color:var(--dim);line-height:1.55;margin-bottom:18px"></p>
+  <div class="stack">
+    <button class="pill-btn ghost" onclick="closeModal('confirm-modal')">Cancel</button>
+    <button class="pill-btn outline red" id="m-yes">Yes, do it</button>
+  </div>
+</div></div>
+
+<!-- ═══ Notice ═══ -->
+<div class="modal" id="notice-modal"><div class="box">
+  <h2 id="notice-title"></h2>
+  <p id="notice-sub" style="font-size:.87rem;color:var(--dim);line-height:1.55"></p>
+</div></div>
+
+<!-- ═══ WiFi first-run ═══ -->
+<div id="wifi-setup">
+  <div class="sechead"><span class="eyebrow">Connect Luna to a network</span><span class="rule"></span></div>
+  <p style="font-size:.85rem;color:var(--dim);line-height:1.55">
+    Luna needs a network for online answers and videos. Everything else works without one.</p>
+  <div id="ws-nets"></div>
+  <label class="eyebrow" id="ws-passlabel" for="ws-pass" style="display:none">Password</label>
+  <input class="field" id="ws-pass" type="password" placeholder="Password" style="display:none">
+  <div id="ws-status"></div>
+  <div class="stack" style="margin-top:14px">
+    <button class="pill-btn blue" id="ws-connect" onclick="wsConnect()" disabled>Connect</button>
+    <button class="pill-btn ghost" onclick="wsScan()">Scan again</button>
+    <button class="pill-btn ghost" onclick="wsSkip()">Skip for now</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="osk"></div>
+
+<script>
+/* Lay the ring of bars around the orb. Done in JS so the bar count can change
+   without hand-writing 14 nth-child rules, and so the transform origin stays
+   correct if the orb size changes with the viewport. */
+/* ── reactor: tick collar ──────────────────────────────────────────────
+   60 marks, every fifth one longer. Generated rather than hand-written: 60
+   <line> elements in the markup would be unreadable, and the every-fifth rule
+   would be invisible to anyone editing it. */
+(function buildTicks(){
+  const g=document.getElementById('ticks'); if(!g) return;
+  const N=60, cx=100, cy=100, rOut=88;
+  let d='';
+  for(let i=0;i<N;i++){
+    const major = i%5===0;
+    const len = major ? 9 : 4.5;
+    const a = (Math.PI*2/N)*i - Math.PI/2;
+    const x1 = cx + Math.cos(a)*(rOut-len), y1 = cy + Math.sin(a)*(rOut-len);
+    const x2 = cx + Math.cos(a)*rOut,       y2 = cy + Math.sin(a)*rOut;
+    d += `M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  }
+  const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('d',d); p.setAttribute('class','st'); p.setAttribute('stroke-width','1');
+  g.appendChild(p);
+})();
+
+/* ── reactor: level bars ───────────────────────────────────────────────
+   Laid out from the reactor's measured size, because it is sized in vh and a
+   hardcoded radius would be wrong on any screen but the one it was written on.
+   Bars fill a 150 degree arc down each side, leaving the top and bottom clear
+   for the HUD readouts. */
+function ringLayout(){
+  const w=document.getElementById('wave'), orb=document.getElementById('orb');
+  if(!w||!orb) return;
+  const R = orb.getBoundingClientRect().width/2 + 16;
+  if(!R || R < 30) return;                       // not laid out yet
+  const bars=[...w.children], n=bars.length, half=n/2;
+  bars.forEach((b,i)=>{
+    const side = i < half ? 1 : -1;              // right side, then left
+    const k = (i % half) / (half - 1);           // 0..1 down the arc
+    // +/-15 to +/-165 degrees: two symmetric arcs that leave the top and
+    // bottom of the reactor clear for the HUD readouts.
+    const a = side > 0 ? (15 + k*150) : (-15 - k*150);
+    b.style.transform =
+      `translate(-50%,-50%) rotate(${a}deg) translateY(${-R}px) rotate(${-a}deg)`;
+    b.style.animationDelay = (k*0.9).toFixed(2)+'s';
+  });
+}
+ringLayout();
+addEventListener('resize', ringLayout);
+// The reactor lives on a page that may be hidden on first paint, so an early
+// measurement reads zero. Re-run after layout settles.
+requestAnimationFrame(()=>requestAnimationFrame(ringLayout));
+
+/* ── HUD readouts ──────────────────────────────────────────────────────
+   The state word mirrors what the robot is actually doing, so the reactor is
+   an instrument rather than decoration. */
+function hudClock(){
+  const c=document.getElementById('hud-clock');
+  if(c) c.textContent=new Date().toTimeString().slice(0,5);
+}
+hudClock(); setInterval(hudClock, 20000);
+/* One place that maps a voice-loop state to what the screen shows, so the
+   reactor, the HUD word and the caption can never disagree with each other.
+   Each state gets its own class on #face-stage; the CSS does the rest.
+
+   'thinking' is the one that mattered: a network answer takes about two
+   seconds, and without it the reactor sat on STANDBY through the wait, which
+   read as the robot having missed the question. */
+const VOICE_STATES = {
+  wake:      {word:'AWAKE',    cls:'st-wake',     caption:'Yes?'},
+  listening: {word:'LISTENING',cls:'st-listening',caption:'Listening'},
+  followup:  {word:'LISTENING',cls:'st-listening',caption:'Anything else?'},
+  thinking:  {word:'THINKING', cls:'st-thinking', caption:'Thinking…'},
+  // no cls: the speaking look is driven by the .speaking class, which
+  // setVoiceState toggles below and speech_start also sets.
+  speaking:  {word:'SPEAKING', cls:'',            caption:null},
+  idle:      {word:'STANDBY',  cls:'',            caption:'Listening'},
+};
+function setVoiceState(name){
+  const st = VOICE_STATES[name] || VOICE_STATES.idle;
+  const s  = document.getElementById('hud-state');
+  if(s) s.textContent = st.word;
+  const stage = document.getElementById('face-stage');
+  if(stage){
+    Object.values(VOICE_STATES).forEach(v=>{ if(v.cls) stage.classList.remove(v.cls); });
+    if(st.cls) stage.classList.add(st.cls);
+    // 'speaking' also drives the existing .speaking class the reactor
+    // animations already key off, so both stay in step.
+    stage.classList.toggle('speaking', name==='speaking');
+  }
+  // caption:null means leave the text alone — speech_start is about to write
+  // the actual sentence, and overwriting it would flash placeholder text.
+  if(st.caption!==null && cap){
+    cap.textContent = st.caption;
+    cap.classList.toggle('idle', name==='idle' || name==='listening');
+  }
+}
+function hudState(word){
+  const s=document.getElementById('hud-state');
+  if(s) s.textContent=word;
+}
+const API = '';
+const HAND_PARTS   = ['head','lateral','shoulder','forearm','elbow','wrist'];
+const FINGER_PARTS = ['thumb','index','middle','ring','pinky'];
+const SERVO_MIN=0, SERVO_MAX=1000, SERVO_DEF=500;   // joint sliders
+const FINGER_MIN=0, FINGER_MAX=100, FINGER_DEF=50;  // finger sliders (matches app UI)
+
+/* ═════════ helpers ═════════ */
+const $=s=>document.querySelector(s);
+function api(p,o){ return fetch(API+p,o).catch(()=>{}); }
+const timers={};
+function thr(k,fn){ clearTimeout(timers[k]); timers[k]=setTimeout(fn,120); }
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show');
+  clearTimeout(timers._t); timers._t=setTimeout(()=>t.classList.remove('show'),2200); }
+function openModal(id){ $('#'+id).classList.add('open'); }
+function closeModal(id){ $('#'+id).classList.remove('open'); }
+function notice(title,sub){ $('#notice-title').textContent=title;
+  $('#notice-sub').textContent=sub||''; openModal('notice-modal'); }
+
+/* slider blue-fill paint */
+function paint(r){
+  // Sets --p only; the track colour comes from the stylesheet so the emerald
+  // gradient is defined in one place instead of being rebuilt here.
+  const p=(r.value-r.min)/(r.max-r.min)*100;
+  r.style.setProperty('--p', p+'%');
+  const o=r.closest('.jrow')?.querySelector('output')
+       || r.closest('.slider-pill')?.querySelector('output');
+  if(o) o.textContent=r.value;
+}
+document.querySelectorAll('input[type=range]').forEach(paint);
+
+/* ═════════ tabs ═════════ */
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); $('#page-'+t.dataset.page).classList.add('active');
+  if(t.dataset.page==='ben') Bot.resize();
+  if(t.dataset.page==='media') loadVideos();
+}));
+
+/* ═════════ top-bar actions ═════════ */
+function doEstop(){ api('/estop'); closeModal('power-modal'); toast('EMERGENCY STOP'); }
+function uploadWifi(){
+  const ssid=$('#wifi-ssid').value.trim(), pass=$('#wifi-pass').value;
+  if(!ssid){ toast('Enter a WiFi name'); return; }
+  if(pass.length<8){ toast('Password needs 8+ characters'); return; }
+  api('/settings?wifi_ssid='+encodeURIComponent(ssid)+'&wifi_password='+encodeURIComponent(pass));
+  closeModal('wifi-modal');
+  notice('Network updating','Please reconnect using the updated network details.');
+}
+
+/* ═════════ motion ═════════ */
+$('#speed').addEventListener('input',function(){ paint(this);
+  thr('speed',()=>api('/speed?value='+this.value)); });
+document.querySelectorAll('#dpad .quads button').forEach(b=>{
+  const dir=b.dataset.dir;
+  const go=e=>{ e.preventDefault(); b.classList.add('held'); api('/move?dir='+dir); };
+  const halt=()=>{ if(!b.classList.contains('held'))return;
+    b.classList.remove('held'); api('/move?dir=stop'); };
+  b.addEventListener('pointerdown',go);
+  b.addEventListener('pointerup',halt);
+  b.addEventListener('pointercancel',halt);
+  b.addEventListener('pointerleave',halt);
+});
+function flip(el){ el.classList.toggle('on'); return el.classList.contains('on'); }
+function tglObstacle(el){ api('/obstacle_avoidance?value='+(flip(el)?'up':'down')); }
+function tglTrack(el,mirror){ const on=flip(el); api('/face_tracking?value='+on);
+  const other=mirror?$('#tgl-track'):$('#tgl-track2');
+  if(other) other.classList.toggle('on',on); }
+function tglChat(el){ api('/online_chat?enabled='+flip(el)); }
+
+/* ═════════ action (arms) ═════════ */
+let hand='left';
+document.querySelectorAll('#hand-seg button').forEach(b=>b.addEventListener('click',()=>{
+  hand=b.dataset.hand; api('/hand?value='+hand);
+  document.querySelectorAll('#hand-seg button').forEach(x=>x.classList.toggle('on',x===b));
+}));
+function sendPos(part,val){
+  if(hand==='both'){ api(`/position?part=${part}&value=${val}&hand=left`);
+                     api(`/position?part=${part}&value=${val}&hand=right`); }
+  else api(`/position?part=${part}&value=${val}&hand=${hand}`);
+}
+function makeJoint(part,min,max,def,label){
+  const row=document.createElement('div'); row.className='slider-pill';
+  row.innerHTML=`<label>${label}</label>
+    <input type="range" min="${min}" max="${max}" value="${def}" data-part="${part}">
+    <output>${def}</output>`;
+  const r=row.querySelector('input'); paint(r);
+  r.addEventListener('input',()=>{ paint(r);
+    Bot.setJoint(part,+r.value,hand);
+    thr('sv-'+part,()=>sendPos(part,r.value)); });
+  return row;
+}
+HAND_PARTS.forEach(p=>$('#action-sliders').appendChild(
+  makeJoint(p,SERVO_MIN,SERVO_MAX,SERVO_DEF,p[0].toUpperCase()+p.slice(1))));
+FINGER_PARTS.forEach(p=>$('#finger-sliders').appendChild(
+  makeJoint(p,FINGER_MIN,FINGER_MAX,FINGER_DEF,p[0].toUpperCase()+p.slice(1))));
+
+function sendFingersJson(){
+  const j={};
+  document.querySelectorAll('#finger-sliders input').forEach(r=>j[r.dataset.part]=+r.value);
+  const enc=encodeURIComponent(JSON.stringify(j));
+  if(hand==='both'){ api(`/position?value=${enc}&hand=left`); api(`/position?value=${enc}&hand=right`); }
+  else api(`/position?value=${enc}&hand=${hand}`);
+  toast('Fingers sent');
+}
+let looping=false;
+function toggleLoopRun(btn){
+  looping=!looping;
+  api(looping?'/loop_start':'/loop_stop');
+  btn.textContent=looping?'Stop Loop':'Start Loop';
+  btn.classList.toggle('red',looping);
+  toast(looping?'Loop running':'Loop stopped');
+}
+function savePose(){
+  const q=['hand='+(hand==='both'?'left':hand)];
+  document.querySelectorAll('#action-sliders input,#finger-sliders input')
+    .forEach(r=>q.push(`${r.dataset.part}=${r.value}`));
+  api('/save_pose?'+q.join('&')); toast('Pose saved to loop');
+}
+
+/* ═════════ audio page ═════════ */
+$('#vol').addEventListener('input',function(){ paint(this);
+  thr('vol',()=>api('/settings?volume='+this.value)); });
+function saveAudio(){
+  const body={robotName:$('#robot-name').value.trim(),
+              welcomeSpeech:$('#welcome-speech').value.trim()};
+  api('/save-audio',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+  toast(body.welcomeSpeech?'Saved — Luna will speak it now':'Saved');
+}
+/* Q&A rows */
+/* Inline SVG icons. Kept as constants so a row builder reads as markup rather
+   than a wall of paths, and so every dustbin in the UI is literally the same
+   glyph. */
+const TRASH_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M4 7h16"/><path d="M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1z"/>
+  <path d="M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7"/>
+  <path d="M10 11v6M14 11v6"/></svg>`;
+const CAMERA_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M4 8.5h2.2l1.3-2h9l1.3 2H20a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 20 19.5H4A1.5 1.5 0 0 1 2.5 18v-8A1.5 1.5 0 0 1 4 8.5z"/>
+  <circle cx="12" cy="14" r="3.4"/></svg>`;
+const UPLOAD_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M12 16V4M7.5 8.5L12 4l4.5 4.5"/>
+  <path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/></svg>`;
+const FACE_PLACEHOLDER_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
+  <circle cx="12" cy="9.6" r="3.4"/><path d="M5.6 20a6.4 6.4 0 0 1 12.8 0"/></svg>`;
+
+let qaNext=1; const qaRemoved=new Set();
+function addQaRow(q='',a='',id){
+  const rid=id||qaNext++;
+  qaNext=Math.max(qaNext,rid+1);
+  const row=document.createElement('div'); row.className='qa-row'; row.dataset.id=rid;
+  // A real dustbin, not the 🗑 emoji: the emoji renders differently on every
+  // platform, cannot be recoloured, and at 40px on a touch panel it looked
+  // like a placeholder rather than a control.
+  row.innerHTML=`<span class="num">${$('#qa-rows').children.length+1}</span>
+    <input class="field" placeholder="Type here..." value="">
+    <input class="field" placeholder="Type here..." value="">
+    <button class="delbtn" aria-label="Delete this answer">${TRASH_SVG}</button>`;
+  const [qi,ai]=row.querySelectorAll('input'); qi.value=q; ai.value=a;
+  row.querySelector('.delbtn').onclick=()=>{ qaRemoved.add(rid); row.remove(); renumber('#qa-rows'); };
+  $('#qa-rows').appendChild(row);
+}
+function renumber(sel){ [...document.querySelectorAll(sel+' .num')]
+  .forEach((n,i)=>n.textContent=i+1); }
+function saveQa(){
+  const list=[];
+  document.querySelectorAll('#qa-rows .qa-row').forEach(row=>{
+    const [q,a]=row.querySelectorAll('input');
+    if(q.value.trim()||a.value.trim())
+      list.push({id:row.dataset.id,q:q.value.trim(),a:a.value.trim()});
+  });
+  qaRemoved.forEach(id=>list.push({id:String(id),q:'',a:''})); qaRemoved.clear();
+  api('/qa/add',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(list)});
+  toast('Q&A saved');
+}
+addQaRow(); addQaRow(); addQaRow();
+
+/* ═════════ face page ═════════ */
+let faceNext=1; const faceRemoved=new Set();
+function addFaceRow(id){
+  const rid=id||faceNext++;
+  faceNext=Math.max(faceNext,rid+1);
+  const row=document.createElement('div'); row.className='face-row'; row.dataset.id=rid;
+  // Two ways to give Luna a face. Capturing from her OWN camera is the better
+  // one and is listed first: it records the face through the same lens, at the
+  // same angle and lighting the recogniser will meet it in, which matters more
+  // for accuracy than photo quality does.
+  row.innerHTML=`<div class="facecell">
+      <div class="thumbbox" aria-hidden="true">${FACE_PLACEHOLDER_SVG}</div>
+      <div class="facebtns">
+        <button class="capbtn" aria-label="Take photo with Luna's camera">${CAMERA_SVG}<span>Capture</span></button>
+        <label class="upbtn" aria-label="Choose a photo file">${UPLOAD_SVG}<span>Upload</span>
+          <input type="file" accept="image/*" hidden></label>
+      </div>
+    </div>
+    <input class="field" placeholder="What Luna says to them">
+    <button class="delbtn" aria-label="Remove this person">${TRASH_SVG}</button>`;
+
+  const fileIn = row.querySelector('input[type=file]');
+  const upbtn  = row.querySelector('.upbtn');
+  const capbtn = row.querySelector('.capbtn');
+  const thumb  = row.querySelector('.thumbbox');
+
+  function setFace(dataUrl){
+    row.dataset.face = dataUrl;
+    thumb.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = dataUrl; img.alt = '';
+    thumb.appendChild(img);
+    thumb.classList.add('has');
+  }
+
+  fileIn.addEventListener('change',()=>{
+    const f=fileIn.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{ setFace(rd.result); toast('Photo added'); };
+    rd.readAsDataURL(f);
+  });
+
+  capbtn.addEventListener('click', async ()=>{
+    if(capbtn.classList.contains('busy')) return;   // 1.5s warm-up: no double taps
+    capbtn.classList.add('busy');
+    thumb.classList.add('shooting');
+    try{
+      const r=await fetch(API+'/display/cam_snap?t='+Date.now());
+      if(!r.ok){
+        let msg='Camera unavailable';
+        try{ const j=await r.json(); if(j.message) msg=j.message; }catch{}
+        toast(msg); return;
+      }
+      const blob=await r.blob();
+      const rd=new FileReader();
+      // Read as a data URL, not an object URL: saveFaces() sends the base64
+      // string to the robot, and an object URL would only be a local handle.
+      rd.onload=()=>{ setFace(rd.result); toast('Photo taken'); };
+      rd.readAsDataURL(blob);
+    }catch{ toast('Camera unavailable — check the connection'); }
+    finally{ capbtn.classList.remove('busy'); thumb.classList.remove('shooting'); }
+  });
+
+  row.querySelector('.delbtn').onclick=()=>{ faceRemoved.add(rid); row.remove(); };
+  $('#face-rows').appendChild(row);
+}
+function saveFaces(){
+  const list=[];
+  document.querySelectorAll('#face-rows .face-row').forEach(row=>{
+    const speech=row.querySelector('.field').value.trim();
+    const face=row.dataset.face||'';
+    if(face||speech) list.push({id:row.dataset.id,face,speech});
+  });
+  faceRemoved.forEach(id=>list.push({id:String(id),face:'',speech:''})); faceRemoved.clear();
+  if(!list.length){ toast('Nothing to upload'); return; }
+  api('/upload_faces',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(list)});
+  toast('Faces uploaded');
+}
+addFaceRow(); addFaceRow(); addFaceRow();
+
+/* ═════════ status / clock / settings load ═════════ */
+async function poll(){
+  try{
+    const r=await fetch(API+'/status'); const s=await r.json();
+    const p = s.battery ?? null;
+    $('#batt-pct').textContent = (p===null?'--':p)+'%';
+    // CSS width — the battery is a div now, and setAttribute('width') on a div
+    // silently does nothing.
+    $('#batt-fill').style.width = Math.max(2, p ?? 0)+'%';
+    const b=$('#batt');
+    b.classList.toggle('low',  p!==null && p<=25 && p>12);
+    b.classList.toggle('crit', p!==null && p<=12);
+    const mic=$('#chip-mic');
+    if(mic){
+      const busy = $('#face-stage').classList.contains('speaking');
+      mic.classList.remove('bad');
+      mic.classList.toggle('live', !busy);
+      mic.lastElementChild.textContent = busy ? 'Speaking' : 'Listening';
+    }
+  }catch{
+    const mic=$('#chip-mic');
+    if(mic){ mic.classList.remove('live'); mic.classList.add('bad');
+             mic.lastElementChild.textContent='No link'; }
+  }
+}
+setInterval(poll,5000); poll();
+fetch(API+'/settings').then(r=>r.json()).then(s=>{
+  if(s.volume!=null){ $('#vol').value=s.volume; paint($('#vol')); }
+  if(s.chatgpt_enabled===false) $('#tgl-chat').classList.remove('on');
+  if(s.robot_name) $('#robot-name').value=s.robot_name;
+  if(s.welcome_speech) $('#welcome-speech').value=s.welcome_speech;
+}).catch(()=>{});
+
+/* ═════════ live speech (SSE) ═════════ */
+const cap=$('#caption'), stage=$('#face-stage'), log=$('#facelog');
+function setIdle(){
+  hudState('STANDBY');
+  stage.classList.remove('speaking');
+  Bot.speaking=false;
+  cap.classList.add('idle');
+  cap.textContent='Listening';
+}
+// The transcript is the hero now, so it keeps a real history rather than the
+// 3 lines that fitted beside the old 3D model. Newest at the BOTTOM, the way
+// a conversation reads, and it auto-scrolls only when already at the bottom so
+// scrolling back through what was said does not get yanked away.
+function addLog(text, who){
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  const t=new Date().toTimeString().slice(0,5);
+  const div=document.createElement('div');
+  div.className='line '+(who==='luna'?'from-luna':'from-you');
+  div.innerHTML=`<b class="mono"></b><i></i><span></span>`;
+  div.querySelector('b').textContent=t;
+  div.querySelector('i').textContent=(who==='luna'?'LUNA':'YOU');
+  div.querySelector('span').textContent=text;
+  log.appendChild(div);
+  while(log.children.length>40) log.firstChild.remove();
+  if(atBottom) log.scrollTop=log.scrollHeight;
+}
+function connectSSE(){
+  const es=new EventSource(API+'/display/events');
+  es.onmessage=e=>{
+    let d; try{ d=JSON.parse(e.data); }catch{ return; }
+    if(d.type==='state'){ setVoiceState(d.text||'idle'); }
+    else if(d.type==='question'){ addLog(d.text||'', 'you'); }
+    else if(d.type==='speech_start'){
+      stage.classList.add('speaking'); Bot.speaking=true; hudState('SPEAKING');
+      cap.classList.remove('idle');
+      cap.textContent=d.text||''; if(d.text) addLog(d.text, 'luna');
+    }
+    else if(d.type==='speech_end'){ setIdle(); }
+    else if(d.type==='play_video'){ openPlayer(d.text); }
+    else if(d.type==='play_youtube'){ openYouTube(d.id,d.text); }
+    else if(d.type==='stop_video'){ closePlayer(); closeYouTube(); }
+    else if(d.type==='notice'){ toast(d.text||''); }
+  };
+  es.onerror=()=>{ es.close(); setTimeout(connectSSE,3000); };
+}
+connectSSE();
+
+/* ═════════ media library ═════════ */
+const fmtSize=b=>b>1e9?(b/1e9).toFixed(1)+' GB':b>1e6?(b/1e6).toFixed(1)+' MB':Math.round(b/1e3)+' KB';
+async function loadVideos(){
+  try{
+    const r=await fetch(API+'/display/videos'); const list=await r.json();
+    const grid=$('#video-grid'); grid.innerHTML='';
+    $('#video-empty').style.display=list.length?'none':'block';
+    list.forEach(v=>{
+      const card=document.createElement('div'); card.className='vcard';
+      card.innerHTML=`<div class="vname"></div><div class="vmeta">${fmtSize(v.size)}</div>
+        <div class="vrow"><button class="pill-btn blue">Play</button>
+        <button class="pill-btn outline red">Delete</button></div>`;
+      card.querySelector('.vname').textContent=v.name;
+      const [play,del]=card.querySelectorAll('button');
+      play.onclick=()=>api('/display/play?name='+encodeURIComponent(v.name));
+      del.onclick=()=>confirmAct('Delete this video?',v.name,
+        '/display/video_delete?name='+encodeURIComponent(v.name),loadVideos);
+      grid.appendChild(card);
+    });
+  }catch{ toast('Could not load video list'); }
+}
+$('#vfile').addEventListener('change',()=>{
+  const f=$('#vfile').files[0]; if(!f) return;
+  const fd=new FormData(); fd.append('video',f);
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST',API+'/display/upload_video');
+  xhr.upload.onprogress=e=>{ if(e.lengthComputable)
+    $('#upload-prog').textContent='Uploading '+Math.round(e.loaded/e.total*100)+'%'; };
+  xhr.onload=()=>{ $('#upload-prog').textContent='';
+    if(xhr.status===200){ toast('Video uploaded'); loadVideos(); }
+    else{ let m='Upload failed'; try{ m=JSON.parse(xhr.responseText).message||m; }catch{}
+      toast(m); } };
+  xhr.onerror=()=>{ $('#upload-prog').textContent=''; toast('Upload failed — check connection'); };
+  xhr.send(fd); $('#vfile').value='';
+  $('#upload-prog').textContent='Uploading 0%';
+});
+function confirmAct(title,text,path,after){
+  $('#m-title').textContent=title; $('#m-text').textContent=text;
+  $('#m-yes').onclick=async()=>{ await api(path); closeModal('confirm-modal');
+    toast('Done'); if(after) after(); };
+  openModal('confirm-modal');
+}
+
+/* ═════════ video player ═════════ */
+const player=$('#player'), vid=$('#vid');
+function openPlayer(name){
+  if(!name) return;
+  $('#player-title').textContent=name;
+  vid.src=API+'/display/video/'+encodeURIComponent(name);
+  player.classList.add('open');
+  vid.play().catch(()=>{});
+}
+function closePlayer(){ player.classList.remove('open'); vid.pause();
+  vid.removeAttribute('src'); vid.load(); }
+function stopVideo(){ api('/display/stop_play'); closePlayer(); }
+function toggleLoop(btn){ vid.loop=!vid.loop; btn.textContent='Loop: '+(vid.loop?'on':'off'); }
+vid.addEventListener('ended',()=>{ if(!vid.loop) closePlayer(); });
+
+/* ═════════ online videos (YouTube) ═════════ */
+const fmtDur=s=>{ s=Math.round(+s||0);
+  return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+async function searchOnline(){
+  const q=$('#yt-query').value.trim(); if(!q) return;
+  const box=$('#yt-results');
+  box.innerHTML='<div style="color:var(--dim);padding:8px">Searching…</div>';
+  try{
+    const r=await fetch(API+'/display/search_online?query='+encodeURIComponent(q));
+    const data=await r.json();
+    if(!r.ok){ box.innerHTML=''; toast(data.message||'Search failed'); return; }
+    box.innerHTML='';
+    if(!data.length){ box.innerHTML='<div style="color:var(--dim);padding:8px">No results</div>'; return; }
+    data.forEach(v=>{
+      const c=document.createElement('div'); c.className='ytcard';
+      c.innerHTML=`<img loading="lazy" src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" alt="">
+        <div class="yt-body"><div class="vname"></div>
+        <div class="vmeta">${fmtDur(v.duration)}${v.channel?' · ':''}<span class="ch"></span></div></div>
+        <button class="pill-btn blue">Play on Luna</button>`;
+      c.querySelector('.vname').textContent=v.title;
+      c.querySelector('.ch').textContent=v.channel;
+      c.querySelector('button').onclick=()=>
+        api('/display/play_online?id='+encodeURIComponent(v.id)+'&title='+encodeURIComponent(v.title));
+      box.appendChild(c);
+    });
+  }catch{ box.innerHTML=''; toast('Search failed — is Luna online?'); }
+}
+$('#yt-query').addEventListener('keydown',e=>{ if(e.key==='Enter') searchOnline(); });
+
+const ytOverlay=$('#yt-player'), ytFrame=$('#yt-frame');
+function openYouTube(id,title){
+  if(!id) return;
+  closePlayer();                       // never two players at once
+  $('#yt-title').textContent=title||'';
+  ytFrame.src='https://www.youtube.com/embed/'+encodeURIComponent(id)
+    +'?autoplay=1&playsinline=1&rel=0';
+  ytOverlay.classList.add('open');
+}
+function closeYouTube(){ ytOverlay.classList.remove('open');
+  ytFrame.src='about:blank'; }
+
+/* ═════════ Wi-Fi setup (first boot + top-bar button) ═════════ */
+let wsSel=null, wsHidden=false;
+const wsNets=$('#ws-nets'), wsPass=$('#ws-pass'), wsStatus=$('#ws-status');
+
+function sigBars(s){ return s>66?'▂▄▆':s>33?'▂▄':'▂'; }
+function wsOpen(){ $('#wifi-setup').classList.add('open'); wsScan(); }
+function wsSkip(){ $('#wifi-setup').classList.remove('open'); }
+$('#btn-wifi').addEventListener('click',wsOpen);
+
+async function wsScan(){
+  wsNets.innerHTML='<div style="color:var(--dim);padding:8px">Scanning…</div>';
+  try{
+    const r=await fetch(API+'/display/wifi_scan'); const list=await r.json();
+    if(!r.ok) throw 0;
+    wsNets.innerHTML='';
+    list.forEach(n=>{
+      const b=document.createElement('button'); b.className='netrow';
+      b.innerHTML=`<span class="nm"></span>
+        <span class="sig">${n.secured?'<span class="lock">🔒</span>':''}${sigBars(n.signal)}</span>`;
+      b.querySelector('.nm').textContent=n.ssid;
+      b.onclick=()=>{
+        wsSel=n; wsHidden=false;
+        document.querySelectorAll('.netrow').forEach(x=>x.classList.remove('sel'));
+        b.classList.add('sel');
+        wsPass.value=''; wsStatus.textContent=''; wsStatus.className='';
+        $('#ws-passlabel').textContent=n.secured?('Password for '+n.ssid):(n.ssid+' is open — just connect');
+        wsPass.placeholder=n.secured?'Type password below':'No password needed';
+      };
+      wsNets.appendChild(b);
+    });
+    /* hidden network entry */
+    const other=document.createElement('button'); other.className='netrow';
+    other.textContent='Other network… (type name)';
+    other.onclick=()=>{
+      wsSel=null; wsHidden=true;
+      document.querySelectorAll('.netrow').forEach(x=>x.classList.remove('sel'));
+      other.classList.add('sel');
+      wsPass.value=''; $('#ws-passlabel').textContent='Type: network name , password';
+      wsPass.placeholder='mynetwork,mypassword';
+      wsStatus.textContent='Type the name, a comma, then the password.'; wsStatus.className='';
+    };
+    wsNets.appendChild(other);
+    if(!list.length) wsNets.insertAdjacentHTML('afterbegin',
+      '<div style="color:var(--dim);padding:8px">No networks found — try Rescan</div>');
+  }catch{
+    wsNets.innerHTML='<div style="color:var(--dim);padding:8px">Scan failed — check nmcli / sudo permissions, or Continue offline</div>';
+  }
+}
+
+async function wsConnect(){
+  let ssid='', pass='';
+  if(wsHidden){
+    const [s,...rest]=wsPass.value.split(',');
+    ssid=(s||'').trim(); pass=rest.join(',').trim();
+  }else{
+    if(!wsSel){ wsStatus.textContent='Pick a network first'; wsStatus.className='err'; return; }
+    ssid=wsSel.ssid; pass=wsPass.value;
+    if(wsSel.secured && pass.length<8){ wsStatus.textContent='Password needs 8+ characters';
+      wsStatus.className='err'; return; }
+  }
+  if(!ssid){ wsStatus.textContent='Enter a network name'; wsStatus.className='err'; return; }
+  wsStatus.textContent='Connecting to '+ssid+'…'; wsStatus.className='';
+  $('#ws-connect').disabled=true;
+  try{
+    const r=await fetch(API+'/display/wifi_connect?ssid='+encodeURIComponent(ssid)
+        +'&password='+encodeURIComponent(pass));
+    const d=await r.json();
+    if(r.ok){
+      wsStatus.textContent='Connected ✓'; wsStatus.className='ok';
+      $('#btn-wifi').classList.remove('off');
+      setTimeout(()=>{ wsSkip(); notice('Connected to '+ssid,
+        'Luna is online — videos and online answers are ready.'); },700);
+    }else{
+      wsStatus.textContent=d.message||'Connection failed'; wsStatus.className='err';
+    }
+  }catch{ wsStatus.textContent='Connection failed'; wsStatus.className='err'; }
+  $('#ws-connect').disabled=false;
+}
+
+/* on-screen keyboard */
+(function buildOSK(){
+  const rows=[['1','2','3','4','5','6','7','8','9','0'],
+              ['q','w','e','r','t','y','u','i','o','p'],
+              ['a','s','d','f','g','h','j','k','l','@'],
+              ['⇧','z','x','c','v','b','n','m','.','⌫'],
+              ['#+= ','SPACE','CLEAR']];
+  const sym=['!','#','$','%','&','*','(',')','-','_','+','=','/','\\',':',';',',','?','"',"'"];
+  let shift=false, symOn=false;
+  const osk=$('#osk');
+  function render(){
+    osk.innerHTML='';
+    const src=symOn?[sym.slice(0,10),sym.slice(10,20),
+      ['⇧','.','@','-','_','+','=','?','!','⌫'],['ABC','SPACE','CLEAR']]:rows;
+    src.forEach(r=>{
+      const div=document.createElement('div'); div.className='osk-row';
+      r.forEach(k=>{
+        const b=document.createElement('button');
+        let label=k;
+        if(k.length===1&&shift&&!symOn) label=k.toUpperCase();
+        b.textContent=label==='SPACE'?'space':label==='CLEAR'?'clear':label.trim();
+        if(['SPACE','CLEAR','#+= ','ABC'].includes(k)) b.classList.add('wide');
+        if(k==='⇧'&&shift) b.classList.add('on');
+        b.onclick=()=>{
+          if(k==='⌫'){ wsPass.value=wsPass.value.slice(0,-1); return; }
+          if(k==='⇧'){ shift=!shift; render(); return; }
+          if(k==='#+= '){ symOn=true; render(); return; }
+          if(k==='ABC'){ symOn=false; render(); return; }
+          if(k==='CLEAR'){ wsPass.value=''; return; }
+          if(k==='SPACE'){ wsPass.value+=' '; return; }
+          wsPass.value+=(shift&&!symOn)?k.toUpperCase():k;
+          if(shift){ shift=false; render(); }
+        };
+        div.appendChild(b);
+      });
+      osk.appendChild(div);
+    });
+  }
+  render();
+})();
+
+/* boot check: online? skip setup. offline? show it */
+async function netCheck(showIfOffline){
+  try{
+    const r=await fetch(API+'/display/net_status'); const d=await r.json();
+    $('#btn-wifi').classList.toggle('off',!d.online);
+    $('#btn-wifi').classList.toggle('on',!!d.online);
+    const c=$('#chip-net');
+    if(c){
+      c.classList.toggle('live',!!d.online);
+      c.classList.toggle('warn',!d.online);
+      c.lastElementChild.textContent = d.online ? (d.ssid||'Online') : 'Offline';
+    }
+    if(!d.online && showIfOffline) wsOpen();
+    return d.online;
+  }catch{
+    $('#btn-wifi').classList.add('off');
+    const c=$('#chip-net');
+    if(c){ c.classList.remove('live'); c.classList.add('warn');
+           c.lastElementChild.textContent='Offline'; }
+    return false; }
+}
+netCheck(true);
+setInterval(()=>netCheck(false),30000);
+const Bot={ speaking:false, setJoint(){}, resize(){} };
+
+</script>
+</body>
+</html>

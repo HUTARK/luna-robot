@@ -1,0 +1,23 @@
+# large model weights — never commit these
+models/
+voices/
+*.pt
+*.onnx
+luna_stt_tests/
+
+# secrets
+ai_config.json
+
+# per-robot data, not code
+settings.json
+qa_store.json
+faces_db.json
+vision_data.json
+uploaded_faces/
+videos/
+*.wav
+
+venv/
+__pycache__/
+*.pyc
+faces/

@@ -117,7 +117,7 @@
  * GPIO 9 and 10 are free on this board — every other pin is spoken for.
  * ───────────────────────────────────────────────────────────────────── */
 #define EYE_L_PIN     9
-#define EYE_R_PIN     10
+#define EYE_R_PIN     3
 #define EYE_LEDS      9
 #define EYE_BRIGHT    77      // of 255. 0.3 on the Pi was 0.3*255 = 77.
 #define LONG_PRESS_MS 3000
@@ -1063,27 +1063,6 @@ void eyesTick() {
     const uint8_t* c = RB[eyeStep % 8];
     eyeShow(c[0], c[1], c[2]);
     eyeInterval = 120;
-  }
-  else if (!strcmp(eyeState, "disco")) {
-    // Saturated colours jumping at random, for the dances. Deliberately
-    // random rather than a sequence: a fixed cycle reads as a pattern within
-    // a few seconds, and stops looking like a disco.
-    //
-    // Fully saturated — one channel at full, one mid, one off — because
-    // pastels wash out under room lighting and end up looking like one
-    // colour flickering.
-    static const uint8_t DISCO[8][3] = {
-      {255,0,60},{255,80,0},{255,220,0},{0,255,60},
-      {0,180,255},{80,0,255},{255,0,255},{0,255,200}};
-    static uint8_t last = 0;
-    uint8_t i = random(8);
-    if (i == last) i = (i + 1) % 8;    // never the same twice running
-    last = i;
-    eyeShow(DISCO[i][0], DISCO[i][1], DISCO[i][2]);
-    // Roughly two changes a second. Faster reads as a strobe, which is
-    // unpleasant to stand near and a genuine problem for anybody
-    // photosensitive.
-    eyeInterval = 220;
   }
   else if (!strcmp(eyeState, "off")) {
     eyeShow(0, 0, 0);

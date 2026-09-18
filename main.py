@@ -22,20 +22,114 @@ HOTSPOT_IFACE      = "wlx105a95d1c4d6"   # external TP-Link adapter
 
 assistant = None            # set in __main__; server.py routes reach it here
 
-# ── Vision trigger phrases ─────────────────────────────────
-VISION_TRIGGERS = [
-    "what do you see",
-    "what can you see",
-    "what is in front of you",
-    "describe what you see",
-    "look around",
-    "what are you looking at",
+# ══════════════════════════════════════════════════════════════════════
+# WHAT SHE SAYS WHEN SHE HEARS HER NAME
+#
+# A fixed "Yes?" every single time is the single most robot-like thing about
+# the whole system — people notice it within three or four turns and it makes
+# every subsequent answer feel canned, however good the answer is.
+#
+# Varied, with no immediate repeat, and grouped so the tone stays sensible:
+# short and neutral most of the time, because a chatty acknowledgement wears
+# out faster than a plain one.
+# ══════════════════════════════════════════════════════════════════════
+WAKE_ACKS = [
+    "Yes?", "Yes?", "Yeah?",
+    "Mm-hm?",
+    "I'm listening.",
+    "Go ahead.",
+    "What's up?",
+    "Yes, I'm here.",
+    "Here.",
+    "How can I help?",
 ]
+
+_ack_bag = []
+_last_ack = None
+
+
+def next_wake_ack():
+    """A different acknowledgement each time, cycling through all of them
+    before any repeats.
+
+    A shuffled BAG rather than random.choice: choosing randomly each time
+    clumps badly. Measured over 14 wakes it used only 6 of the 10 phrases and
+    said "Mm-hm?" four times, which sounds like a tic rather than variety. The
+    bag guarantees every phrase is used once before any comes round again, and
+    the reshuffle avoids the seam where the last of one bag could be the first
+    of the next.
+
+    Phrases listed twice in WAKE_ACKS appear twice per cycle, which is how the
+    plain ones stay commoner than the chatty ones.
+    """
+    import random
+    global _ack_bag, _last_ack
+    if not _ack_bag:
+        _ack_bag = list(WAKE_ACKS)
+        random.shuffle(_ack_bag)
+        if len(_ack_bag) > 1 and _ack_bag[-1] == _last_ack:
+            _ack_bag[-1], _ack_bag[0] = _ack_bag[0], _ack_bag[-1]
+    _last_ack = _ack_bag.pop()
+    return _last_ack
+
+
+# ── Vision trigger phrases ─────────────────────────────────
+# Phrases that mean "answer this from the camera".
+#
+# Wider than before because a vision-language model can answer questions YOLO
+# never could — colours, text, whether a door is open, how many people are
+# wearing hats. The old list only caught "what do you see" style phrasings, so
+# "is there a bottle in front of you" fell through to GPT, which answered
+# confidently and blindly, having never seen the room.
+VISION_TRIGGERS = [
+    "what do you see", "what can you see", "what are you seeing",
+    "what is in front of you", "what's in front of you",
+    "describe what you see", "describe the scene", "describe the room",
+    "describe where you are", "look around", "what are you looking at",
+    "can you see", "do you see", "is there a", "are there any",
+    "how many", "what colour", "what color", "what am i holding",
+    "what is on the table", "what's on the table",
+    "read this", "what does this say", "what is this",
+]
+
+# Words that make a phrase about the ROOM rather than the world in general.
+# "how many" alone would hijack "how many days in a year", and "what colour"
+# would hijack "what colour is the sky" — both belong to GPT, not the camera.
+VISION_CONTEXT = [
+    "you see", "in front of you", "front of you", "there", "this", "here",
+    "table", "room", "holding", "camera", "looking", "scene", "around",
+    "i am", "i'm", "my ",
+]
+
+AMBIGUOUS = ("can you see", "do you see", "is there a", "are there any",
+             "how many", "what colour", "what color")
+
+# Subjects that are never in the room, however the question is phrased.
+# "can you see the future" and "is there a god" both matched an ambiguous
+# phrase AND the bare word "there", so they were being sent to the camera —
+# which would have answered by describing a wall. Checked before the context
+# words, because an abstract subject settles it on its own.
+NOT_IN_THE_ROOM = (
+    "future", "past", "god", "heaven", "point in", "any point",
+    "meaning of", "problem with", "difference between", "reason why",
+)
 
 
 def is_vision_request(text: str) -> bool:
-    text = text.lower()
-    return any(t in text for t in VISION_TRIGGERS)
+    t = (text or "").lower()
+    for phrase in VISION_TRIGGERS:
+        if phrase not in t:
+            continue
+        # The unambiguous ones are enough on their own.
+        if phrase not in AMBIGUOUS:
+            return True
+        # An abstract subject rules the camera out whatever else matched.
+        if any(n in t for n in NOT_IN_THE_ROOM):
+            return False
+        # The rest need something anchoring them to the here and now.
+        if any(c in t for c in VISION_CONTEXT):
+            return True
+    return False
 
 
 # ── Answering ──────────────────────────────────────────────
@@ -44,39 +138,80 @@ def is_vision_request(text: str) -> bool:
 #
 # Return a string to answer, or None to fall through to answer_remote (GPT).
 
-def answer_local(question: str):
-    print(f"[Q] {question}")
+def _mark_answer():
+    """Tell the gesture engine the next thing spoken is an ANSWER.
 
-    # ── video on the display ────────────────────────────────────────────
-    # try_video_command parses "play a video about lions" and starts playback
-    # itself, returning the search terms. It was already in display_addon but
-    # nothing called it, so asking Luna for a video did nothing.
+    Called just before returning an answer, because this is the only place
+    that knows the difference. speech_start looks identical for "Yes?" and
+    for a paragraph about India, so without this the arms would start a
+    gesture for a one-word acknowledgement and get half a pose in before the
+    speech ended — a twitch rather than a gesture.
+    """
+    try:
+        from gesture import gestures
+        gestures.expect_answer()
+    except Exception:
+        pass
+
+
+def answer_local(question: str):
+    # ── turn towards whoever spoke, and look like you are listening ──────
     #
-    # Checked BEFORE the Q&A store and before GPT: a video request should never
-    # wait on a network answer, and "play a video about tigers" would otherwise
-    # be sent to GPT as a question.
+    # Read the DOA here, at the top of the turn, because this is the one moment
+    # it is trustworthy: the person has just finished asking, and the DSP's
+    # DOAANGLE register holds the bearing of the most recent speech it heard.
+    # Sampled while Luna is talking it would point at her own speaker, which is
+    # mounted on the robot, is the loudest thing in the room, and cannot be
+    # cancelled — AEC measured 1-2.5 dB on this build where useful is 20-30.
+    try:
+        from sound_direction import last_direction
+        import head_tracker
+        bearing = last_direction()
+        if bearing is not None:
+            head_tracker.tracker.face_bearing(bearing)
+        else:
+            # No new bearing — the person has not moved, or the DSP heard
+            # nothing new. Still push the go-home timer out, because a
+            # question WAS just asked: the conversation is live even if the
+            # direction is unchanged, and the head should not wander off
+            # mid-exchange.
+            head_tracker.tracker.keep_awake()
+        # The nod is NOT started here. This runs after the question has been
+        # transcribed, so it would nod while thinking and answering rather
+        # than while listening. It is driven from the listening state instead
+        # — see _speech_hook in display_addon.py.
+    except Exception as e:
+        # Never allowed to stop an answer. This is presentation, not function.
+        print(f"[DOA] skipped: {e}")
+
+    # Load the acknowledgement for the NEXT wake. This runs once per turn,
+    # after the current one has already been spoken, so rotating here gives a
+    # different phrase every time without LunaVoice needing to know anything
+    # about it.
+    if assistant is not None:
+        try:
+            assistant.wake_ack = next_wake_ack()
+        except Exception:
+            pass
+
+    # ── video requests ──────────────────────────────────────────────────
+    # try_video_command has been in display_addon.py all along — its own
+    # docstring shows exactly this call — but main.py never made it. So
+    # "play a video on elephants" fell through to GPT, which answered
+    # honestly that it cannot play videos. The machinery was complete and
+    # simply unreachable from the voice path.
+    #
+    # Checked BEFORE the vision triggers, because "show me a video of a dog"
+    # contains "show me" and would otherwise be taken as a request to look at
+    # something with the camera.
     try:
         from display_addon import try_video_command
-        vq = try_video_command(question)
-        # "play a video" with no subject parses to "a" and would search YouTube
-        # for the letter A. Ask instead of guessing.
-        if vq and len(vq) < 3:
-            return "A video about what?"
-        if vq:
-            print(f"[VIDEO] playing: {vq}")
-            return f"Playing a video about {vq} on my screen."
+        q = try_video_command(question)
+        if q:
+            _mark_answer()
+            return f"Playing a video about {q} on my screen."
     except Exception as e:
-        print(f"[VIDEO] check failed: {e}")
-
-    if any(p in question for p in ("stop the video", "stop video",
-                                   "close the video", "close video")):
-        try:
-            import urllib.request
-            urllib.request.urlopen("http://127.0.0.1:5000/display/stop_play",
-                                   timeout=5)
-        except Exception as e:
-            print(f"[VIDEO] stop failed: {e}")
-        return "Stopped."
+        print(f"[MEDIA] video request failed: {e}")
 
     if is_vision_request(question):
         print("[MODE] Vision request")
@@ -85,36 +220,77 @@ def answer_local(question: str):
         if assistant:
             assistant.pause()
         try:
-            speak("Let me take a look.")
-            from vision import describe_scene
-            return describe_scene()
+            # Said before the request, not after: the round trip is 1-3
+            # seconds and silence reads as the robot having missed the
+            # question.
+            # Said BEFORE the request. A description is 1-3 seconds; a search
+            # sweeps the head and can take ten. Silence for that long reads as
+            # the robot having missed the question entirely.
+            from vision_vlm import is_find_request as _isfind
+            speak("Let me have a look around." if _isfind(question)
+                  else "Let me take a look.")
+            # The VLM answers the QUESTION rather than listing objects, and
+            # falls back to YOLO by itself when there is no network or no key
+            # — so there is no need to decide here which to use.
+            from vision_vlm import (ask_about_scene, is_find_request,
+                                    extract_thing, find_object)
+            # "can you see a bottle" makes her LOOK — the camera sees about 60
+            # degrees, so a bottle two feet to one side is simply not in the
+            # picture, and answering "no" from a single frame is wrong in a way
+            # that feels careless. find_object sweeps the head and stops the
+            # moment it finds it.
+            # Wrapped. An exception here used to propagate into the voice
+            # thread and kill it, so one bad vision request stopped the robot
+            # answering anything at all until a restart. A vision failure
+            # should cost one answer, not the conversation.
+            try:
+                if is_find_request(question):
+                    _mark_answer()
+                    return find_object(extract_thing(question))
+                _mark_answer()
+                return ask_about_scene(question)
+            except Exception as e:
+                import traceback
+                print(f"[VISION] request failed: {e}")
+                traceback.print_exc()
+                return "Sorry, I had trouble looking at that."
         except Exception as e:
             print(f"[VISION] Error: {e}")
-            return "Sorry, my camera is not available right now."
+            try:
+                from vision import describe_scene
+                _mark_answer()
+                return describe_scene()
+            except Exception:
+                return "Sorry, my camera is not available right now."
         finally:
             if assistant:
                 assistant.resume()
 
     answer = find_answer(question)
     if answer:
-        print(f"[A] (local) {answer}")
+        print("[QA] Found in local store")
+        _mark_answer()
         return answer
 
     if not load_settings().get("chatgpt_enabled", True):
-        return "I don't know that one yet."
+        # This is the "tell me about India" case. Nothing is broken: online
+        # answers are switched OFF in settings.json, so anything not in the
+        # local Q&A store gets refused. The old wording gave no clue which of
+        # the two it was — an empty store or a disabled toggle.
+        print("[QA] online answers are DISABLED in settings "
+              "(chatgpt_enabled=false) — turn on Online Chat in the app, "
+              "or set it in settings.json")
+        return "I can't look that up right now. My online answers are switched off."
 
     print("[QA] Not found locally — asking GPT")
     return None                      # -> answer_remote
 
 
 def answer_remote(question: str):
+    # The GPT answer is an answer too.
+    _mark_answer()
     from ai_fallback import ask_gpt
-    t0 = time.monotonic()
-    reply = ask_gpt(question)
-    # Log the answer AND how long the network call took. Without the timing
-    # there is no way to tell a slow API from a slow robot.
-    print(f"[A] (gpt {(time.monotonic()-t0)*1000:.0f}ms) {reply}")
-    return reply
+    return ask_gpt(question)
 
 
 # ── Shutdown ───────────────────────────────────────────────
@@ -170,10 +346,21 @@ if __name__ == "__main__":
 
     s = load_settings()
 
+    # wake_ack must be a STRING. LunaVoice stores it and calls
+    # speak(self.wake_ack) directly, so passing a function does not fail at
+    # construction — it fails later inside speak() with
+    #     AttributeError: 'function' object has no attribute 'strip'
+    # which kills the voice thread outright and stops Luna listening at all.
+    # A try/except around the constructor does not catch it, because nothing
+    # is called until the first wake.
+    #
+    # So the phrase is rotated by REPLACING the attribute after each turn —
+    # see the end of answer_local. This turn's ack has already been spoken by
+    # then, so what is being set is the one for next time.
     assistant = LunaVoice(
         answer_local=answer_local,
         answer_remote=answer_remote,
-        wake_ack="Yes?",
+        wake_ack=next_wake_ack(),
     ).start()
 
     welcome = s.get("welcome_speech",

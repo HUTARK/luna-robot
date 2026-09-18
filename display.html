@@ -3,981 +3,779 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>LUNA — Technovation</title>
+<title>LUNA · MAX — Technovation</title>
 <style>
-/* ═══════════════════════════════════════════════════════════════════════
-   LUNA — glass control surface, emerald
-
-   STRUCTURE is Ben's, because it was proven on a touchscreen: status bar on
-   top, six tabs along the bottom, pill buttons, segmented selectors. What
-   changed is the material and the colour, not where things are.
-
-   GLASS needs something behind it or it is just grey. Three slow-drifting
-   emerald blobs sit on #bg-aura beneath every panel; the blur picks them up,
-   so panels shift subtly as the blobs pass. Remove the aura and the whole
-   design collapses to flat grey — that is the one thing not to delete.
-
-   backdrop-filter is GPU-composited in Firefox 103+. Every animation here
-   moves transform/opacity only, never width/top/filter, so the compositor can
-   keep it off the main thread. That matters on a robot that is also running
-   Whisper and YOLO.
-
-   THE ORB is the signature. Four blurred radial gradients rotate and scale on
-   different periods inside a circular mask — the flowing look Siri has, done
-   with transforms so it costs almost nothing. Idle it drifts slowly; speaking
-   it speeds up, brightens, and the ring of bars around it comes alive.
-   ═══════════════════════════════════════════════════════════════════════ */
 :root{
-  /* emerald ramp */
-  --e-100:#D7FFF2; --e-300:#5EF2C4; --e-400:#22DFA6; --e-500:#0FBF8B;
-  --e-600:#0A8F69; --e-700:#076B4F; --e-900:#031F17;
-  --mint:#8CFFDC;
-  --amber:#FFC44D; --rose:#FF6B84;
-  /* ground */
-  --ink:#030806; --ink-2:#061109;
-  /* glass */
-  --g-1:rgba(255,255,255,.045);
-  --g-2:rgba(255,255,255,.075);
-  --g-line:rgba(214,255,240,.11);
-  --g-line-2:rgba(214,255,240,.20);
-  --g-sheen:rgba(255,255,255,.10);
-  /* text */
-  --text:#EAFFF7; --dim:rgba(214,255,240,.62); --faint:rgba(214,255,240,.34);
-  --topbar:62px; --tabbar:72px;
-  /* ── depth system ──────────────────────────────────────────────────────
-     Three fixed elevations, used consistently, so the interface reads as
-     stacked physical planes rather than as boxes with random shadows.
-     Each is a contact shadow plus a diffuse one plus a top highlight —
-     that combination is what makes a surface look lit from above. */
-  --lift-1:0 2px 4px rgba(0,0,0,.34),0 8px 20px rgba(0,0,0,.30),
-           inset 0 1px 0 rgba(255,255,255,.07);
-  --lift-2:0 4px 8px rgba(0,0,0,.38),0 16px 40px rgba(0,0,0,.38),
-           inset 0 1px 0 rgba(255,255,255,.11);
-  --lift-3:0 8px 16px rgba(0,0,0,.42),0 30px 70px rgba(0,0,0,.45),
-           inset 0 1px 0 rgba(255,255,255,.14);
-  --ease:cubic-bezier(.22,.61,.36,1);
+  /* LUNA is amber; Ben is blue. Deliberately opposite sides of the colour
+     wheel so the two robots are unmistakable at a glance and in photographs.
+     Warm light also reads as friendlier on a robot that talks to people.
+
+     The token is still called --blue. Renaming it would mean touching every
+     rule that uses it, and missing one would leave a stray blue control. It
+     means "primary accent", not the colour. */
+  --bg:#080604; --pill:#231C12; --pill2:#171208; --field:#0C0904;
+
+  /* Accents lifted. The previous amber sat at 55% lightness against a
+     near-black ground, which is legible but reads as dull — on a glossy panel
+     under room light a mid-tone accent loses most of its punch to
+     reflections. These are pushed to near-full saturation with a lighter
+     highlight sibling, which is what makes glass look lit rather than tinted. */
+  --blue:#FFA31A;          /* primary accent — see the note above about the name */
+  --blue-lit:#FFC64D;      /* the lighter sibling: gradients, glows, active states */
+  --blue-dim:#B36E00;
+  --navy:#2B2114;
+  --green:#2EE87C; --red:#FF5A6E; --track:#463A29;
+  --text:#FFFCF6; --muted:#BCAB93;
+
+  /* ── GLASS ────────────────────────────────────────────────────────────
+     Four values, used everywhere, so every surface is made of the same
+     material. A panel needs FIVE things to read as glass rather than as a
+     translucent rectangle, and the old styling only had two of them:
+
+       1. blur behind it              (--g-blur)
+       2. saturation boost, so colour bleeds through instead of grey
+       3. a HAIRLINE top edge lighter than the rest of the border — this is
+          the specular catch, and it is the single biggest cue
+       4. an inner top glow, so light appears to enter the surface
+       5. a drop shadow, so it floats above what it is blurring
+
+     Remove 3 and 4 and it flattens instantly. */
+  --g-fill:rgba(255,248,238,.055);
+  --g-fill-2:rgba(255,248,238,.10);
+  --g-edge:rgba(255,240,220,.14);
+  --g-edge-lit:rgba(255,250,240,.42);
+  --g-blur:blur(26px) saturate(180%);
+  --g-shadow:0 8px 30px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.30);
+  --g-inner:inset 0 1px 0 var(--g-edge-lit),
+            inset 0 14px 26px -14px rgba(255,214,150,.16);
+
+  --tabbar:64px; --topbar:64px;
   font-size:16px;
 }
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
-  user-select:none;-webkit-user-select:none;touch-action:manipulation}
-html,body{height:100%;overflow:hidden;background:var(--ink);color:var(--text);
-  font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
-.mono{font-family:ui-monospace,'Roboto Mono',Menlo,monospace;font-variant-numeric:tabular-nums}
-input,textarea{user-select:text;-webkit-user-select:text}
-button{font-family:inherit;color:inherit}
-:focus-visible{outline:2px solid var(--e-400);outline-offset:2px}
-@media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important}}
 
-/* ── the aura the glass reads from ───────────────────────────────────── */
-#bg-aura{position:fixed;inset:-20%;z-index:-2;pointer-events:none;
-  background:var(--ink)}
-#bg-aura i{position:absolute;display:block;border-radius:50%;filter:blur(90px);
-  opacity:.5;will-change:transform}
-#bg-aura i:nth-child(1){width:58vw;height:58vw;left:-12%;top:-14%;
-  background:radial-gradient(circle,#0FBF8B,transparent 68%);
-  animation:drift1 34s ease-in-out infinite}
-#bg-aura i:nth-child(2){width:46vw;height:46vw;right:-8%;top:22%;
-  background:radial-gradient(circle,#076B4F,transparent 66%);
-  animation:drift2 41s ease-in-out infinite}
-#bg-aura i:nth-child(3){width:40vw;height:40vw;left:28%;bottom:-18%;
-  background:radial-gradient(circle,#22DFA6,transparent 70%);opacity:.3;
-  animation:drift3 47s ease-in-out infinite}
+/* One class every glass surface can use, so the material is defined once. */
+.glass{
+  background:var(--g-fill);
+  backdrop-filter:var(--g-blur);
+  -webkit-backdrop-filter:var(--g-blur);
+  border:1px solid var(--g-edge);
+  box-shadow:var(--g-shadow), var(--g-inner);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+html,body{height:100%;overflow:hidden;color:var(--text);
+  font-family:'Segoe UI',system-ui,-apple-system,Inter,Roboto,sans-serif;
+  background:var(--bg)}
+
+/* ── the layer the glass refracts ───────────────────────────────────────
+   Glass needs something BEHIND it or it is just grey. Three slow-drifting
+   warm blobs sit under every panel; the blur picks them up, so surfaces shift
+   subtly as the blobs pass and the material looks alive rather than painted.
+
+   Remove this and every panel flattens to a grey rectangle. It is the one
+   part of the glass system that is easy to delete by accident because
+   nothing visibly depends on it. */
+#bg-aura{position:fixed;inset:-25%;z-index:-2;pointer-events:none;
+  background:var(--bg);overflow:hidden}
+#bg-aura i{position:absolute;display:block;border-radius:50%;
+  filter:blur(90px);will-change:transform}
+#bg-aura i:nth-child(1){width:60vw;height:60vw;left:-10%;top:-16%;opacity:.42;
+  background:radial-gradient(circle,#FFA31A,transparent 66%);
+  animation:drift1 38s ease-in-out infinite}
+#bg-aura i:nth-child(2){width:48vw;height:48vw;right:-8%;top:20%;opacity:.30;
+  background:radial-gradient(circle,#FF6A1A,transparent 64%);
+  animation:drift2 47s ease-in-out infinite}
+#bg-aura i:nth-child(3){width:42vw;height:42vw;left:26%;bottom:-20%;opacity:.24;
+  background:radial-gradient(circle,#FFD166,transparent 68%);
+  animation:drift3 55s ease-in-out infinite}
 @keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}
-  50%{transform:translate(9vw,7vh) scale(1.14)}}
+  50%{transform:translate(9vw,7vh) scale(1.16)}}
 @keyframes drift2{0%,100%{transform:translate(0,0) scale(1.06)}
-  50%{transform:translate(-8vw,-6vh) scale(.92)}}
+  50%{transform:translate(-8vw,-6vh) scale(.9)}}
 @keyframes drift3{0%,100%{transform:translate(0,0) scale(.95)}
-  50%{transform:translate(6vw,-8vh) scale(1.18)}}
-/* a fine grid, barely there — gives the glass an edge to refract */
-#bg-grid{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.32;
-  background-image:linear-gradient(rgba(94,242,196,.05) 1px,transparent 1px),
-                   linear-gradient(90deg,rgba(94,242,196,.05) 1px,transparent 1px);
-  background-size:46px 46px}
+  50%{transform:translate(6vw,-8vh) scale(1.2)}}
+/* A barely-there grid. It gives the blur an edge to bend, which is what
+   separates "frosted" from "slightly see-through". */
+#bg-grid{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.30;
+  background-image:
+    linear-gradient(rgba(255,200,120,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,200,120,.045) 1px,transparent 1px);
+  background-size:48px 48px}
+@media (prefers-reduced-motion:reduce){#bg-aura i{animation:none}}
+.mono{font-family:ui-monospace,'Roboto Mono',Menlo,monospace}
+input,textarea{user-select:text;-webkit-user-select:text}
 
-/* ── HUD frame ────────────────────────────────────────────────────────
-   Corner brackets and a slow scan line, at the very front of the 3D space.
-   They never move with the content, so they read as the housing the interface
-   sits inside — the thing that makes it feel like an instrument rather than a
-   web page. pointer-events:none throughout: it must never eat a touch. */
-#hud-frame{position:fixed;inset:0;z-index:40;pointer-events:none}
-#hud-frame .c{position:absolute;width:26px;height:26px;
-  border:1px solid rgba(94,242,196,.4)}
-#hud-frame .tl{left:8px;top:8px;border-right:none;border-bottom:none}
-#hud-frame .tr{right:8px;top:8px;border-left:none;border-bottom:none}
-#hud-frame .bl{left:8px;bottom:8px;border-right:none;border-top:none}
-#hud-frame .br{right:8px;bottom:8px;border-left:none;border-top:none}
-#hud-frame .scan{position:absolute;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(94,242,196,.30),transparent);
-  animation:sweep 9s linear infinite}
-@keyframes sweep{0%{top:-2%;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:102%;opacity:0}}
-
-/* ── glass primitive ─────────────────────────────────────────────────── */
-.glass{background:var(--g-1);backdrop-filter:blur(22px) saturate(150%);
-  -webkit-backdrop-filter:blur(22px) saturate(150%);
-  border:1px solid var(--g-line);position:relative;overflow:hidden}
-/* the top sheen is what reads as "glass" rather than "translucent box" */
-.glass::after{content:'';position:absolute;left:0;right:0;top:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--g-sheen) 24%,
-             var(--g-sheen) 76%,transparent);pointer-events:none}
-
-.eyebrow{font-size:.6rem;font-weight:700;letter-spacing:.22em;
-  text-transform:uppercase;color:var(--faint)}
-
-/* ═══ Status bar ═══ */
-#topbar{height:var(--topbar);display:flex;align-items:center;gap:12px;
-  padding:0 16px;background:rgba(3,8,6,.55);
-  backdrop-filter:blur(26px) saturate(150%);
-  -webkit-backdrop-filter:blur(26px) saturate(150%);
-  border-bottom:1px solid var(--g-line);position:relative;z-index:5}
-#logo{display:flex;align-items:center;gap:11px}
-#logo img{height:26px;display:block}
-#logo .wm{font-weight:200;font-size:1.32rem;letter-spacing:.36em;
-  text-transform:uppercase}
-#logo .wm b{font-weight:600;color:var(--e-300)}
+/* ═══ Top bar ═══ */
+#topbar{height:var(--topbar);display:flex;align-items:center;gap:12px;padding:0 18px}
+#logo{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.14em;font-size:1.05rem}
+#logo img{height:36px;max-width:110px;object-fit:contain;display:block;
+  background:#fff;border-radius:9px;padding:3px 8px}
+#logo .tn{text-transform:uppercase}
+#logo .tn b{color:var(--blue)}
 #topbar .grow{flex:1}
+#batt{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:.62rem;color:var(--muted)}
+#batt svg{width:26px;height:16px}
+.iconbtn{width:46px;height:46px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center}
+.iconbtn svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#btn-wifi{background:var(--green)} #btn-wifi.off{background:#3A3E45}
+#btn-gear{background:var(--green)}
+#btn-power{background:var(--red)}
+.iconbtn:active{filter:brightness(1.2);transform:scale(.94)}
 
-.chip{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px;
-  border-radius:999px;background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  font-size:.64rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--dim)}
-.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
-.chip.live{color:var(--e-100);border-color:var(--g-line-2)}
-.chip.live .dot{background:var(--e-300);box-shadow:0 0 10px var(--e-300);
-  animation:breathe 2.4s ease-in-out infinite}
-@keyframes breathe{0%,100%{opacity:1}50%{opacity:.42}}
-.chip.warn{color:var(--amber);border-color:rgba(255,196,77,.28)}
-.chip.warn .dot{background:var(--amber);box-shadow:0 0 10px var(--amber)}
-.chip.bad{color:var(--rose);border-color:rgba(255,107,132,.3)}
-.chip.bad .dot{background:var(--rose)}
-
-#batt{display:flex;align-items:center;gap:9px;height:32px;padding:0 12px;
-  border-radius:999px;background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-#batt .bar{width:32px;height:13px;border-radius:3px;
-  border:1.5px solid rgba(214,255,240,.42);position:relative;padding:1.5px}
-#batt .bar::after{content:'';position:absolute;right:-4px;top:3.5px;width:2px;
-  height:4px;background:rgba(214,255,240,.42);border-radius:0 1px 1px 0}
-#batt-fill{height:100%;background:var(--e-300);border-radius:1px;
-  transition:width .6s ease;box-shadow:0 0 8px rgba(94,242,196,.55)}
-#batt.low #batt-fill{background:var(--amber);box-shadow:0 0 8px rgba(255,196,77,.5)}
-#batt.crit #batt-fill{background:var(--rose);box-shadow:0 0 8px rgba(255,107,132,.5)}
-#batt-pct{font-size:.68rem;font-weight:700;color:var(--dim);min-width:32px;
-  text-align:right}
-
-.iconbtn{width:44px;height:44px;border-radius:50%;flex:none;
-  background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  display:flex;align-items:center;justify-content:center}
-.iconbtn svg{width:20px;height:20px;stroke:var(--text);fill:none;stroke-width:1.9;
-  stroke-linecap:round;stroke-linejoin:round}
-.iconbtn:active{transform:scale(.92)}
-#btn-wifi.on{border-color:rgba(94,242,196,.42);box-shadow:0 0 18px rgba(15,191,139,.22)}
-#btn-wifi.on svg{stroke:var(--e-300)}
-#btn-wifi.off svg{stroke:var(--faint)}
-#btn-gear svg{stroke:var(--dim)}
-#btn-power{border-color:rgba(255,107,132,.34)}
-#btn-power svg{stroke:var(--rose)}
-
-/* ═══ Pages ═══ */
-/* One perspective for the whole content area: every panel's translateZ is
-   measured from the same camera, so lifts read as consistent depth instead of
-   each element having its own vanishing point. */
-#pages{position:fixed;top:var(--topbar);bottom:var(--tabbar);left:0;right:0;
-  padding:14px 16px;overflow:hidden;perspective:1400px;
-  perspective-origin:50% 42%}
-.page.active{transform-style:preserve-3d;animation:pageIn .34s var(--ease)}
-@keyframes pageIn{from{opacity:0;transform:translateZ(-90px) rotateX(4deg)}
-  to{opacity:1;transform:none}}
+/* ═══ Pages / layout ═══ */
+#pages{position:fixed;top:var(--topbar);bottom:var(--tabbar);left:0;right:0;padding:8px 18px 12px;overflow:hidden}
 .page{display:none;height:100%}
-.page.active{display:flex;flex-direction:column;gap:12px}
-.scrolly{overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;
-  scrollbar-width:thin;scrollbar-color:rgba(94,242,196,.26) transparent}
-.scrolly::-webkit-scrollbar{width:6px}
-.scrolly::-webkit-scrollbar-thumb{background:rgba(94,242,196,.26);border-radius:3px}
+.page.active{display:flex;flex-direction:column;gap:12px;
+  animation:pageIn .34s cubic-bezier(.22,.61,.36,1)}
+@keyframes pageIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.tab{transition:background .2s ease, box-shadow .2s ease, transform .12s ease}
+.pill-btn,.roundbtn,.iconbtn{transition:transform .1s ease, filter .15s ease, background .2s ease}
+.pill-btn:active,.roundbtn:active,.iconbtn:active{transform:scale(.96)}
+@media (prefers-reduced-motion:reduce){.page.active{animation:none}}
+.scrolly{overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0}
 
-/* ═══ Tab bar — Ben's rounded-top tabs, in glass ═══ */
-#tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar);display:flex;
-  gap:7px;padding:0 12px;perspective:600px;transform-style:preserve-3d;
-  background:rgba(3,8,6,.6);
-  backdrop-filter:blur(26px) saturate(150%);
-  -webkit-backdrop-filter:blur(26px) saturate(150%);
-  border-top:1px solid var(--g-line);z-index:5}
-.tab{flex:1;border:none;background:var(--g-1);color:var(--dim);
-  border:1px solid var(--g-line);border-bottom:none;
-  border-radius:18px 18px 0 0;margin-top:12px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-  font-size:.62rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
-  transform:rotateX(9deg);transform-origin:bottom center;
-  box-shadow:0 -3px 12px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.06);
-  transition:margin-top .16s var(--ease),transform .16s var(--ease),
-             background .16s}
-.tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;
-  stroke-linecap:round;stroke-linejoin:round}
-.tab.active{margin-top:5px;color:var(--e-100);background:var(--g-2);
-  border-color:var(--g-line-2);transform:rotateX(0deg) translateZ(12px);
-  box-shadow:inset 0 1px 0 var(--g-sheen),0 -12px 30px rgba(15,191,139,.22),
-             0 -3px 10px rgba(0,0,0,.35)}
-.tab:active{background:var(--g-2)}
+/* ═══ Bottom tab bar ═══ */
+#tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar);display:flex;gap:8px;
+  padding:8px 12px 10px;background:linear-gradient(to top,#080A10,rgba(8,10,16,.6))}
+.tab{flex:1;border:none;background:var(--g-fill);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);color:#C3CCDA;font-size:.9rem;font-weight:600;
+  border-radius:14px;letter-spacing:.02em;transition:.14s;
+  box-shadow:inset 0 0 0 1px rgba(120,150,220,.08)}
+.tab.active{background:linear-gradient(180deg,#20335E,#131A2E 100%);color:#fff;
+  box-shadow:inset 0 0 0 1.5px var(--blue),0 0 18px rgba(41,121,255,.35);box-shadow:inset 0 1px 0 var(--g-edge-lit),0 -10px 26px -8px rgba(255,163,26,.30)}
+.tab:active{transform:scale(.97)}
 
-/* ═══ Shared ═══ */
-.seg{display:flex;background:var(--g-1);border:1px solid var(--g-line);
-  border-radius:999px;padding:5px;gap:5px;
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-.seg button{flex:1;border:none;background:transparent;color:var(--dim);
-  font-size:.86rem;font-weight:600;padding:12px 8px;border-radius:999px;min-height:46px}
-.seg button.on{background:linear-gradient(180deg,var(--e-400),var(--e-600));
-  color:#022018;box-shadow:0 4px 14px rgba(15,191,139,.34)}
+/* ═══ Shared pieces ═══ */
+.seg{display:flex;background:rgba(255,255,255,.06);border-radius:999px;padding:5px;gap:4px;
+  backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);
+  border:1px solid var(--g-edge);box-shadow:var(--g-shadow), var(--g-inner)}
+.seg button{flex:1;border:none;background:transparent;color:#D5D8DE;font-size:.95rem;font-weight:600;
+  padding:12px 10px;border-radius:999px}
+.seg button.on{background:var(--blue);color:#fff}
 
-.pill-btn{border:none;border-radius:999px;padding:14px 24px;font-size:.9rem;
-  font-weight:600;min-height:50px}
-.pill-btn.blue{background:linear-gradient(180deg,var(--e-400),var(--e-600));
-  color:#022018;box-shadow:0 5px 18px rgba(15,191,139,.3)}
-.pill-btn.violet{background:linear-gradient(180deg,var(--mint),var(--e-500));
-  color:#022018;box-shadow:0 5px 18px rgba(140,255,220,.24)}
-.pill-btn.amber{background:linear-gradient(180deg,#FFD37A,var(--amber));color:#33230A;
-  box-shadow:0 5px 18px rgba(255,196,77,.26)}
-.pill-btn.outline{background:var(--g-1);color:var(--e-300);
-  border:1px solid rgba(94,242,196,.36);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-.pill-btn.outline.red{color:var(--rose);border-color:rgba(255,107,132,.4)}
-.pill-btn.ghost{background:var(--g-1);color:var(--dim);border:1px solid var(--g-line);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-/* A raised edge and a shadow that collapses on press: the button travels
-   downward instead of just changing colour, which on a touchscreen is the only
-   feedback available once a finger covers the label. */
-.pill-btn{box-shadow:0 3px 0 rgba(0,0,0,.34),0 8px 20px rgba(0,0,0,.32),
-          inset 0 1px 0 rgba(255,255,255,.16);
-  transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
-.pill-btn:active{transform:translateY(3px);
-  box-shadow:0 0 0 rgba(0,0,0,.3),inset 0 2px 7px rgba(0,0,0,.4)}
-.pill-btn:disabled{opacity:.4}
+/* ── glossy accent button ──────────────────────────────────────────────
+   A flat fill reads as a coloured rectangle. Three things make it look like
+   a lit lozenge instead:
+     · a vertical gradient, light at the top, so it appears lit from above
+     · a bright hairline on the TOP edge only — the specular catch
+     · a coloured glow beneath, so it sits above the surface rather than on it
+   The ::after is a gloss sheen over the upper half, which is the iOS trick:
+   a highlight that stops at the midpoint reads as a curved glass surface. */
+.pill-btn{border:none;border-radius:999px;padding:15px 26px;font-size:1rem;
+  font-weight:600;min-height:54px;position:relative;overflow:hidden;
+  backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur)}
+.pill-btn.blue{
+  background:linear-gradient(180deg,var(--blue-lit) 0%,var(--blue) 55%,
+                             var(--blue-dim) 100%);
+  color:#2A1800;
+  box-shadow:0 6px 20px rgba(255,163,26,.34),
+             0 1px 0 rgba(255,255,255,.45) inset,
+             0 -6px 12px -6px rgba(0,0,0,.35) inset}
+.pill-btn.blue::after{content:'';position:absolute;left:0;right:0;top:0;
+  height:48%;pointer-events:none;border-radius:999px 999px 40% 40%/999px 999px 100% 100%;
+  background:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,0))}
+.pill-btn.outline{background:var(--g-fill);color:var(--blue-lit);
+  border:1px solid rgba(255,163,26,.45);
+  box-shadow:var(--g-shadow), inset 0 1px 0 var(--g-edge-lit)}
+.pill-btn.outline.red{color:var(--red);border-color:rgba(255,90,110,.45)}
+.pill-btn.ghost{background:var(--g-fill);color:var(--muted);
+  border:1px solid var(--g-edge);
+  box-shadow:var(--g-shadow), inset 0 1px 0 var(--g-edge-lit)}
+.pill-btn:active{filter:brightness(1.14)}
+.pill-btn.grow{flex:1}
 
-.field{background:rgba(3,8,6,.42);border:1px solid var(--g-line);border-radius:14px;
-  color:var(--text);padding:14px 16px;font-size:.92rem;min-height:50px;width:100%;
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-.field::placeholder{color:var(--faint)}
-.field:focus{border-color:rgba(94,242,196,.45);outline:none;
-  box-shadow:0 0 0 3px rgba(15,191,139,.13)}
+.slider-pill{display:flex;align-items:center;gap:14px;
+  background:var(--g-fill-2);border-radius:999px;
+  backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);
+  border:1px solid var(--g-edge);box-shadow:var(--g-shadow), var(--g-inner);
+  padding:10px 22px;min-height:62px}
+.slider-pill label{font-size:1rem;font-weight:600;min-width:86px}
+.slider-pill output{min-width:52px;text-align:right;font-size:1rem;font-weight:600}
+input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:8px;border-radius:4px;
+  background:linear-gradient(90deg,var(--blue) 50%,var(--track) 50%);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;border-radius:50%;
+  background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-thumb{width:30px;height:30px;border-radius:50%;background:#fff;border:none}
 
-.card{background:var(--g-1);border:1px solid var(--g-line);border-radius:18px;
-  backdrop-filter:blur(22px) saturate(150%);
-  -webkit-backdrop-filter:blur(22px) saturate(150%);box-shadow:var(--lift-1)}
+.toggle-line{display:flex;align-items:center;justify-content:space-between;padding:10px 4px}
+.toggle-line span{font-size:1.05rem;font-weight:600}
+.tgl{width:60px;height:34px;border-radius:999px;background:#3A3E45;border:none;position:relative;flex-shrink:0}
+.tgl::after{content:'';position:absolute;top:4px;left:4px;width:26px;height:26px;border-radius:50%;
+  background:#fff;transition:left .15s}
+.tgl.on{background:var(--blue)} .tgl.on::after{left:30px}
 
-.toggle{width:56px;height:31px;border-radius:999px;background:rgba(214,255,240,.14);
-  border:1px solid var(--g-line);position:relative;flex:none;transition:background .2s}
-.toggle::after{content:'';position:absolute;top:3px;left:3px;width:23px;height:23px;
-  border-radius:50%;background:#fff;transition:transform .2s}
-.toggle.on{background:linear-gradient(90deg,var(--e-500),var(--e-300));
-  border-color:transparent;box-shadow:0 0 16px rgba(15,191,139,.4)}
-.toggle.on::after{transform:translateX(25px)}
+.roundbtn{width:52px;height:52px;border-radius:50%;border:none;background:var(--blue);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.roundbtn svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.roundbtn:active{filter:brightness(1.25);transform:scale(.94)}
 
-/* ═══════════════════════════════════════════════════════════════════════
-   THE ORB — Siri-style flowing voice indicator
+.field{width:100%;background:var(--g-fill);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);border:1px solid rgba(255,255,255,.1);border-radius:14px;color:#fff;
+  padding:14px 16px;font-size:1rem}
+.field::placeholder{color:#6B7078}
+textarea.field{min-height:84px;resize:none}
 
-   Four blurred radial gradients on different rotation and scale periods,
-   clipped to a circle. Because only transform animates, the compositor
-   handles it and the main thread stays free for the app.
+/* ═══ BEN page (3D + speech) ═══ */
+#face-stage::before{content:'';position:absolute;left:50%;bottom:8%;width:62%;height:60px;
+  transform:translateX(-50%);border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse at center,rgba(41,121,255,.42) 0%,rgba(41,121,255,.10) 45%,transparent 72%);
+  filter:blur(3px);animation:podium 3.4s ease-in-out infinite}
+@keyframes podium{0%,100%{opacity:.65;transform:translateX(-50%) scaleX(1)}50%{opacity:1;transform:translateX(-50%) scaleX(1.06)}}
+/* ── Body-motion control ─────────────────────────────────────────────
+   Bottom-left: the clock owns top-left and the camera view owns
+   bottom-right. Collapsed it is one pill; the chevron expands it to the two
+   toggles. */
+#motion-ctl{position:absolute;left:18px;bottom:18px;z-index:6;
+  display:flex;align-items:flex-end;gap:6px}
+#motion-main,#motion-more{display:flex;align-items:center;gap:9px;
+  padding:11px 16px;border-radius:999px;min-height:46px;
+  border:1px solid var(--g-edge);color:var(--muted);
+  background:var(--g-fill);backdrop-filter:var(--g-blur);
+  -webkit-backdrop-filter:var(--g-blur);
+  box-shadow:var(--g-shadow), inset 0 1px 0 var(--g-edge-lit);
+  font-size:.86rem;font-weight:600;transition:color .2s,border-color .2s}
+#motion-more{padding:11px;width:46px;justify-content:center}
+#motion-main svg,#motion-more svg{width:19px;height:19px;stroke:currentColor;
+  fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+#motion-more svg{transition:transform .25s}
+#motion-ctl.open #motion-more svg{transform:rotate(180deg)}
+#motion-main.on{color:#2A1800;border-color:transparent;
+  background:linear-gradient(180deg,var(--blue-lit),var(--blue));
+  box-shadow:0 6px 20px rgba(255,163,26,.34),
+             inset 0 1px 0 rgba(255,255,255,.45)}
+/* Half-on: one of the two enabled. Distinct from both states, so the pill
+   never claims everything is on when only the head is. */
+#motion-main.part{color:var(--blue-lit);border-color:rgba(255,163,26,.5)}
+#motion-main:active,#motion-more:active{transform:scale(.97)}
+#motion-main.live svg{animation:mpulse 1.4s ease-in-out infinite}
+@keyframes mpulse{0%,100%{opacity:1}50%{opacity:.45}}
 
-   Idle: slow drift, dim, the ring barely moves — Luna is awake and waiting.
-   Speaking: periods shorten, brightness rises, the surrounding bars jump.
-   ═══════════════════════════════════════════════════════════════════════ */
-/* The stage is a 3D room, not two columns. The reactor panel sits forward,
-   the transcript sits back and slightly rotated, so the eye reads a primary
-   and a secondary plane instead of two equal boxes. Static transforms only —
-   Firefox drops backdrop-filter inside an ANIMATED 3D ancestor, so the glass
-   would vanish if these were animating. */
-#face-stage{flex:1;min-height:0;display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(290px,370px);gap:20px;
-  align-items:stretch;transform-style:preserve-3d}
-@media (max-width:900px){#face-stage{grid-template-columns:minmax(0,1fr)}
-  #stage-right{display:none}}
+#motion-panel{position:absolute;left:0;bottom:58px;width:262px;
+  padding:6px 14px 10px;border-radius:16px;opacity:0;pointer-events:none;
+  transform:translateY(10px);transition:opacity .22s,transform .22s;
+  background:var(--g-fill);backdrop-filter:var(--g-blur);
+  -webkit-backdrop-filter:var(--g-blur);border:1px solid var(--g-edge);
+  box-shadow:var(--g-shadow), inset 0 1px 0 var(--g-edge-lit)}
+#motion-ctl.open #motion-panel{opacity:1;pointer-events:auto;
+  transform:translateY(0)}
+#motion-panel .mrow{display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:10px 0}
+#motion-panel .mrow + .mrow{border-top:1px solid var(--g-edge)}
+#motion-panel .mrow span{font-size:.84rem;font-weight:500}
+#motion-note{font-size:.7rem;color:var(--muted);padding:6px 0 2px;
+  line-height:1.4;min-height:1em}
 
-#stage-left{position:relative;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:26px;
-  border-radius:24px;background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(22px) saturate(150%);
-  -webkit-backdrop-filter:blur(22px) saturate(150%);overflow:hidden;padding:22px;
-  box-shadow:var(--lift-3);transform-style:preserve-3d;
-  transform:translateZ(30px)}
-#stage-left::after{content:'';position:absolute;left:0;right:0;top:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--g-sheen) 30%,
-             var(--g-sheen) 70%,transparent)}
+#face-stage{flex:1;position:relative;overflow:hidden;min-height:0;border-radius:22px;
+  box-shadow:inset 0 0 0 1px rgba(120,150,220,.14), inset 0 30px 80px rgba(10,20,45,.5);
+  background:radial-gradient(ellipse at 50% 28%,#10131B 0%,#000 72%)}
+#hero{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+#hero-canvas{width:min(74vh,440px);height:min(74vh,440px);max-width:82%;display:block}
+#idle-widget{position:absolute;top:14px;left:18px;pointer-events:none;text-shadow:0 2px 10px rgba(0,0,0,.7)}
+#iw-clock{font-size:2.3rem;font-weight:800;line-height:1}
+#iw-date{font-size:.8rem;color:var(--muted);margin-top:3px}
+#iw-wx{font-size:1rem;font-weight:600;margin-top:8px;display:none}
+#iw-wx .em{font-size:1.25rem;margin-right:6px}
+#iw-wx small{display:block;font-size:.72rem;color:var(--muted);font-weight:400;margin-top:2px}
+#iw-rem{font-size:.85rem;font-weight:600;margin-top:8px;color:#FFD166;display:none}
 
-/* ══════════════════════════════════════════════════════════════════════
-   THE REACTOR — the HUD centrepiece
+/* ═══ Reminder banner ═══ */
+#rem-banner{position:fixed;top:80px;left:50%;transform:translate(-50%,-160px);
+  background:rgba(28,33,56,.72);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);border-radius:22px;padding:20px 26px;z-index:48;
+  display:flex;align-items:center;gap:16px;max-width:min(640px,90vw);
+  box-shadow:0 10px 40px rgba(0,0,0,.6);transition:transform .3s}
+#rem-banner.show{transform:translate(-50%,0)}
+#rem-banner .bell{font-size:2rem;animation:ring 1.1s ease-in-out infinite}
+@keyframes ring{0%,100%{transform:rotate(0)}20%{transform:rotate(18deg)}40%{transform:rotate(-14deg)}60%{transform:rotate(8deg)}80%{transform:rotate(-4deg)}}
+#rem-banner .txt{flex:1;font-size:1.1rem;font-weight:700;line-height:1.35}
+#rem-banner .txt small{display:block;font-size:.75rem;color:var(--muted);font-weight:400}
 
-   Concentric instrument rings, counter-rotating, each on its own Z plane
-   inside one shared perspective, so they genuinely pass in front of and
-   behind each other. Built as layered SVG because arcs with gaps, tick
-   marks and dashed rings are what SVG is for; CSS borders cannot do them
-   cleanly at this size.
+/* ═══ Face greeting card ═══ */
+#face-card{position:fixed;top:80px;left:50%;transform:translate(-50%,-200px);
+  background:rgba(28,33,56,.72);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);border-radius:24px;padding:18px 26px;z-index:48;
+  display:flex;align-items:center;gap:18px;max-width:min(560px,90vw);
+  box-shadow:0 10px 40px rgba(0,0,0,.6);transition:transform .35s}
+#face-card.show{transform:translate(-50%,0)}
+#fc-photo{width:86px;height:86px;border-radius:50%;object-fit:cover;
+  border:3px solid var(--blue);background:#0C0D10;flex-shrink:0}
+#fc-initial{width:86px;height:86px;border-radius:50%;background:var(--blue);
+  display:none;align-items:center;justify-content:center;font-size:2.3rem;
+  font-weight:800;flex-shrink:0}
+#fc-name{font-size:1.25rem;font-weight:800}
+#fc-greet{font-size:.92rem;color:var(--muted);margin-top:3px;line-height:1.35}
 
-   The layers, back to front:
-     -60px  hex field        the depth the eye reads first
-     -34px  tick collar      60 marks, slow, gives scale
-     -12px  dashed ring      counter-rotates against the collar
-       0    core             hexagonal, pulses with the voice
-     +18px  arc segments     fast, the "working" layer
-     +34px  reticle          crosshair and corner brackets, dead still
+/* ═══ Face tracking overlay ═══ */
+#track-view{position:fixed;inset:0;background:#000;z-index:47;display:none;flex-direction:column}
+#track-view.open{display:flex}
+#tv-wrap{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center}
+#tv-img{max-width:100%;max-height:100%;display:block}
+#tv-boxes{position:absolute;pointer-events:none}
+/* The boxes arrive ~8 times a second. Without a transition they teleport
+   between polls, which reads as a laggy camera even when the video is fine. */
+.tv-box{position:absolute;border:3px solid rgba(255,255,255,.55);border-radius:10px;
+  pointer-events:none;transition:left .18s linear,top .18s linear,
+  width .18s linear,height .18s linear,border-color .2s}
+.tv-box::after{content:'TAP TO FOLLOW';position:absolute;top:-22px;left:0;
+  color:rgba(255,255,255,.6);font-size:.66rem;font-weight:800;letter-spacing:.1em}
+.tv-box.sel{border-color:var(--blue);box-shadow:0 0 18px rgba(41,121,255,.6)}
+.tv-box.sel::after{content:'FOLLOWING';color:var(--blue)}
+#tv-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#0B0B0D}
+#tv-hint{flex:1;font-size:.85rem;color:var(--muted)}
+#tv-state{font-size:.62rem;font-weight:800;letter-spacing:.14em;padding:5px 11px;
+  border-radius:999px;background:#1B1B1F;color:var(--muted);white-space:nowrap}
+#tv-state.live{background:rgba(41,121,255,.18);color:var(--blue)}
+#tv-state.home{background:rgba(255,255,255,.09);color:#bbb}
+/* A tap on a touchscreen gives no feedback of its own, and the lock takes a
+   frame or two to resolve — without this the screen looks unresponsive and
+   people tap again, on somebody else. */
+.tv-ping{position:absolute;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;
+  border:2px solid var(--blue);pointer-events:none;animation:tvping .5s ease-out forwards}
+@keyframes tvping{from{transform:scale(.3);opacity:.9}to{transform:scale(1.3);opacity:0}}
+#caption{min-height:34px;max-width:88%;text-align:center;font-size:1.5rem;line-height:1.3;font-weight:600;
+  letter-spacing:.01em;text-shadow:0 2px 16px rgba(0,0,0,.6);transition:opacity .3s}
+#caption.idle{color:var(--muted);font-weight:400;font-size:1.15rem}
+#facelog{background:var(--g-fill);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);border:1px solid var(--g-edge);box-shadow:var(--g-shadow), var(--g-inner);border-radius:18px;padding:10px 18px;max-height:86px;overflow:hidden}
+#facelog .line{font-size:.8rem;color:var(--muted);padding:3px 0;display:flex;gap:10px}
+#facelog .line b{color:var(--blue);font-weight:600;flex-shrink:0}
 
-   The still reticle matters: with everything moving, a fixed element is what
-   the eye anchors to, and its stillness is what makes the rest read as depth
-   rather than as noise.
-   ══════════════════════════════════════════════════════════════════════ */
-#orb{position:relative;width:min(46vh,332px);aspect-ratio:1;flex:none;
-  transform-style:preserve-3d;animation:reactorTilt 22s ease-in-out infinite}
-@keyframes reactorTilt{
-  0%,100%{transform:rotateX(14deg) rotateY(-9deg)}
-  50%    {transform:rotateX(-7deg) rotateY(11deg)}}
-#orb .lay{position:absolute;inset:0;transform-style:preserve-3d;
-  will-change:transform}
-#orb svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-#orb .st{fill:none;stroke:var(--e-300);vector-effect:non-scaling-stroke}
+/* ═══ Luna's point of view ═══════════════════════════════════════════
+   A small window onto the camera, shown only while she is looking at or for
+   something. Sits over the orb rather than beside it: the orb is decorative
+   and the picture is information, so the picture wins while it is up. */
+#pov{position:absolute;right:18px;bottom:18px;width:min(34%,320px);
+  border-radius:16px;overflow:hidden;opacity:0;transform:translateY(14px) scale(.97);
+  transition:opacity .3s,transform .3s;pointer-events:none;z-index:5;
+  background:var(--g-fill);backdrop-filter:var(--g-blur);
+  -webkit-backdrop-filter:var(--g-blur);border:1px solid var(--g-edge);
+  box-shadow:var(--g-shadow), var(--g-inner)}
+#pov.show{opacity:1;transform:translateY(0) scale(1)}
+#pov-head{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  font-size:.66rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);border-bottom:1px solid var(--g-edge)}
+#pov-dot{width:7px;height:7px;border-radius:50%;background:var(--blue);flex:none;
+  box-shadow:0 0 8px var(--blue);animation:povpulse 1.1s ease-in-out infinite}
+@keyframes povpulse{0%,100%{opacity:1}50%{opacity:.35}}
+#pov-img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;
+  background:#000}
 
-/* depth planes */
-#l-hex   {transform:translateZ(-60px)}
-#l-collar{transform:translateZ(-34px)}
-#l-dash  {transform:translateZ(-12px)}
-#l-core  {transform:translateZ(0)}
-#l-arc   {transform:translateZ(18px)}
-#l-ret   {transform:translateZ(34px)}
+/* ═══ MOTION page ═══ */
+#motion-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;min-height:0}
+#dpad-wrap{display:flex;align-items:center;justify-content:center}
+#dpad{width:min(100%,52vh);aspect-ratio:1;border-radius:50%;background:#000;position:relative}
+#dpad .quads{position:absolute;inset:0;border-radius:50%;overflow:hidden;
+  transform:rotate(45deg);display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;background:#000}
+#dpad .quads button{border:none;background:#ECECEC}
+#dpad .quads button.held{background:var(--blue)}
+#dpad-center{position:absolute;inset:26%;border-radius:50%;background:#000;border:none;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;letter-spacing:.1em}
+#dpad-center:active{color:var(--red)}
 
-/* rotation — each layer counter-turns against its neighbour */
-#l-collar>svg{animation:spinCW 46s linear infinite}
-#l-dash>svg  {animation:spinCCW 27s linear infinite}
-#l-arc>svg   {animation:spinCW 13s linear infinite}
-#l-hex>svg   {animation:spinCCW 90s linear infinite}
-@keyframes spinCW {to{transform:rotate(360deg)}}
-@keyframes spinCCW{to{transform:rotate(-360deg)}}
+.arrow{position:absolute;font-size:1.5rem;color:#2B2B2B;pointer-events:none}
+.arrow.up{top:6%;left:50%;transform:translateX(-50%)}
+.arrow.down{bottom:6%;left:50%;transform:translateX(-50%)}
+.arrow.left{left:6%;top:50%;transform:translateY(-50%)}
+.arrow.right{right:6%;top:50%;transform:translateY(-50%)}
+#motion-side{display:flex;flex-direction:column;gap:14px;justify-content:center}
 
-/* the core reads the voice */
-#l-core .glow{animation:corePulse 3.4s ease-in-out infinite}
-@keyframes corePulse{0%,100%{opacity:.5;transform:scale(.96)}
-  50%{opacity:.92;transform:scale(1.04)}}
+/* ═══ ACTION page ═══ */
+#action-wrap{flex:1;display:grid;grid-template-columns:1.35fr 1fr;gap:16px;min-height:0}
+#action-left{display:flex;flex-direction:column;gap:10px;min-height:0}
+.seg-label{font-size:.62rem;font-weight:700;letter-spacing:.18em;
+  color:#7C8798;padding:14px 4px 4px;text-transform:uppercase}
+#action-sliders{flex:1;display:flex;flex-direction:column;gap:10px}
+#action-tools{display:flex;align-items:center;gap:10px}
+#action-tools .slider-pill{flex:1}
+#action-bottom{display:flex;gap:12px}
+#action-right{display:flex;flex-direction:column;gap:10px;min-height:0}
+.fingers-pill{display:flex;align-items:center;gap:14px;background:var(--g-fill-2);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);border:1px solid var(--g-edge);box-shadow:var(--g-shadow), var(--g-inner);border-radius:999px;
+  padding:10px 22px;min-height:62px;border:none;color:#fff}
+.fingers-pill b{font-size:1rem;font-weight:600}
+.fingers-pill .chev{margin-left:auto;color:var(--blue);font-size:1.2rem}
 
-/* ── reactor states ────────────────────────────────────────────────────
-   Each state changes the reactor's SPEED and COLOUR, not its shape, so the
-   transitions read as the same instrument working harder rather than as the
-   screen swapping graphics.
+/* ═══ AUDIO page ═══ */
+#audio-wrap{flex:1;display:grid;grid-template-columns:1fr 1.25fr;gap:16px;min-height:0}
+#audio-left{display:flex;flex-direction:column;gap:12px}
+.label{font-size:1.02rem;font-weight:700;margin:2px 2px -4px}
+#qa-head{display:flex;background:var(--blue);border-radius:14px;overflow:hidden}
+#qa-head span{flex:1;text-align:center;font-weight:700;padding:12px}
+#qa-rows{flex:1;display:flex;flex-direction:column;gap:10px}
+.qa-row{display:flex;align-items:center;gap:10px}
+.qa-row .num{width:22px;text-align:center;font-weight:700}
+.qa-row .field{flex:1}
+.delbtn{width:44px;height:44px;border:none;background:transparent;color:#F87171;font-size:1.25rem;flex-shrink:0}
+.addrow{align-self:flex-end;background:transparent;border:none;color:var(--blue);font-size:.95rem;font-weight:600;padding:8px 4px}
+#audio-actions{display:flex;gap:12px}
 
-   listening  slightly quicker than standby, cyan-green — attentive
-   thinking    amber, arcs sprint, core pulses fast — visibly working, and
-               unmistakably different from idle, which was the whole problem
-   speaking    mint, everything fast, glow at maximum                        */
-#face-stage.st-listening #l-arc>svg {animation-duration:9s}
-#face-stage.st-listening #orb .st   {stroke:var(--e-300)}
-#face-stage.st-listening #l-core .glow{animation-duration:2.2s}
+/* ═══ FACE page ═══ */
+#facepg-wrap{flex:1;display:flex;flex-direction:column;gap:12px;min-height:0}
+#faces-head{display:flex;background:var(--blue);border-radius:14px;overflow:hidden}
+#faces-head span{flex:1;text-align:center;font-weight:700;padding:12px}
+#face-rows{flex:1;display:flex;flex-direction:column;gap:10px}
+.face-row{display:flex;align-items:center;gap:10px}
+.face-row .upbtn{flex:1;display:flex;align-items:center;gap:10px;justify-content:center;
+  background:var(--field);border:1px solid #2E3138;border-radius:14px;color:#fff;padding:14px;font-size:.95rem;font-weight:600}
+.face-row .upbtn.done{border-color:var(--green);color:var(--green)}
+.face-row .field{flex:1.3}
 
-#face-stage.st-thinking #l-arc>svg   {animation-duration:1.6s}
-#face-stage.st-thinking #l-dash>svg  {animation-duration:5s}
-#face-stage.st-thinking #l-collar>svg{animation-duration:11s}
-#face-stage.st-thinking #l-core .glow{animation-duration:.8s}
-#face-stage.st-thinking #orb .st     {stroke:var(--amber)}
-#face-stage.st-thinking #orb{filter:drop-shadow(0 0 20px rgba(255,196,77,.45))}
-#face-stage.st-thinking #wave span   {background:var(--amber);
-  animation-duration:.6s;opacity:.8}
-
-#face-stage.st-wake #orb{filter:drop-shadow(0 0 26px rgba(140,255,220,.5))}
-#face-stage.st-wake #l-core .glow{animation-duration:.6s}
-
-#face-stage.speaking #l-arc>svg   {animation-duration:3.2s}
-#face-stage.speaking #l-dash>svg  {animation-duration:7s}
-#face-stage.speaking #l-collar>svg{animation-duration:14s}
-#face-stage.speaking #l-core .glow{animation-duration:.7s}
-#face-stage.speaking #orb .st{stroke:var(--mint)}
-#face-stage.speaking #orb{filter:drop-shadow(0 0 22px rgba(94,242,196,.45))}
-
-/* live level bars, flanking the reactor — reuses the 14 #wave spans */
-#wave{position:absolute;left:50%;top:50%;width:min(46vh,332px);
-  height:min(46vh,332px);transform:translate(-50%,-50%) translateZ(46px);
-  pointer-events:none;transform-style:preserve-3d}
-#wave span{position:absolute;left:50%;top:50%;width:2px;height:10px;
-  border-radius:1px;background:var(--e-300);opacity:.3;
-  animation:lvl 2.4s ease-in-out infinite}
-@keyframes lvl{0%,100%{height:6px;opacity:.22}50%{height:18px;opacity:.72}}
-#face-stage.speaking #wave span{animation-duration:.5s;opacity:.9;
-  background:var(--mint);box-shadow:0 0 9px var(--mint)}
-
-/* HUD readouts around the reactor */
-#hud-top,#hud-bot{position:absolute;left:50%;transform:translateX(-50%);
-  font-family:ui-monospace,monospace;font-size:.56rem;letter-spacing:.28em;
-  text-transform:uppercase;color:var(--faint);white-space:nowrap;
-  display:flex;gap:16px;align-items:center}
-#hud-top{top:6px} #hud-bot{bottom:6px}
-#hud-top b,#hud-bot b{color:var(--e-300);font-weight:600}
-
-#caption{max-width:min(88%,620px);text-align:center;font-size:1.45rem;
-  font-weight:300;line-height:1.4;letter-spacing:-.01em;min-height:2.5em;
-  display:flex;align-items:center;justify-content:center}
-#caption.idle{font-size:.68rem;font-weight:700;letter-spacing:.3em;
-  text-transform:uppercase;color:var(--faint)}
-
-/* transcript panel */
-#stage-right{display:flex;flex-direction:column;border-radius:24px;
-  background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(22px) saturate(150%);
-  -webkit-backdrop-filter:blur(22px) saturate(150%);overflow:hidden;
-  box-shadow:var(--lift-1);
-  transform:translateZ(-26px) rotateY(-4deg);transform-origin:right center}
-#stage-right .hd{padding:15px 18px 11px;border-bottom:1px solid var(--g-line);
-  display:flex;align-items:center;gap:9px}
-#facelog{flex:1;min-height:0;overflow-y:auto;padding:6px 14px 14px;
-  display:flex;flex-direction:column;
-  scrollbar-width:thin;scrollbar-color:rgba(94,242,196,.26) transparent}
-#facelog::-webkit-scrollbar{width:5px}
-#facelog::-webkit-scrollbar-thumb{background:rgba(94,242,196,.26);border-radius:3px}
-#facelog .line{padding:11px 2px;border-bottom:1px solid rgba(214,255,240,.06);
-  display:flex;flex-direction:column;gap:5px}
-#facelog .line .who{display:flex;align-items:center;gap:8px}
-#facelog .line i{font-size:.55rem;font-style:normal;font-weight:700;
-  letter-spacing:.16em;padding:3px 8px;border-radius:999px}
-#facelog .from-luna i{color:#022018;background:var(--e-300)}
-#facelog .from-you i{color:var(--e-100);background:rgba(214,255,240,.13)}
-#facelog .line b{font-size:.6rem;color:var(--faint);font-weight:500}
-#facelog .line span{font-size:.94rem;line-height:1.5}
-#facelog .from-you span{color:var(--dim)}
-#facelog:empty::after{content:'Nothing said yet. Call Luna by name to start.';
-  font-size:.8rem;color:var(--faint);padding:22px 2px;text-align:center}
-
-/* ═══ Move ═══ */
-#motion-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0}
-#dpad-wrap{display:flex;align-items:center;justify-content:center;border-radius:22px;
-  background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
-#dpad{display:grid;grid-template-columns:repeat(3,80px);
-  grid-template-rows:repeat(3,80px);gap:10px}
-#dpad{transform-style:preserve-3d}
-#dpad button{border:1px solid var(--g-line);background:var(--g-1);border-radius:20px;
-  display:flex;align-items:center;justify-content:center;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  box-shadow:0 4px 0 rgba(0,0,0,.4),0 10px 24px rgba(0,0,0,.34),
-             inset 0 1px 0 rgba(255,255,255,.12);
-  transition:transform .09s var(--ease),box-shadow .09s var(--ease)}
-#dpad button svg{width:26px;height:26px;stroke:var(--e-300);fill:none;
-  stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-#dpad button:active{background:linear-gradient(180deg,var(--e-400),var(--e-600));
-  border-color:transparent;transform:translateY(4px);
-  box-shadow:0 0 26px rgba(15,191,139,.5),inset 0 2px 8px rgba(2,32,24,.5)}
-#dpad button:active svg{stroke:#022018}
-#dpad .stop{border-color:rgba(255,107,132,.3)}
-#dpad .stop svg{stroke:var(--rose)}
-#dpad .stop:active{background:var(--rose);box-shadow:0 0 24px rgba(255,107,132,.45)}
-#dpad .stop:active svg{stroke:#fff}
-#dpad .blank{visibility:hidden}
-#motion-side{display:flex;flex-direction:column;gap:12px;min-height:0}
-.rowcard{background:var(--g-1);border:1px solid var(--g-line);border-radius:18px;
-  padding:15px 18px;display:flex;flex-direction:column;gap:10px;
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  box-shadow:var(--lift-1)}
-.rowcard .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.rowcard .val{font-size:1.5rem;font-weight:200}
-.rowcard .val small{font-size:.78rem;color:var(--dim);font-weight:400}
-
-/* ═══ Sliders ═══ */
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;
-  background:transparent}
-input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:999px;
-  background:linear-gradient(90deg,var(--e-400) var(--p,50%),
-             rgba(214,255,240,.13) var(--p,50%))}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;
-  border-radius:50%;background:#fff;margin-top:-10px;
-  box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 0 5px rgba(15,191,139,.18)}
-input[type=range]::-moz-range-track{height:8px;border-radius:999px;
-  background:rgba(214,255,240,.13)}
-input[type=range]::-moz-range-progress{height:8px;border-radius:999px;
-  background:var(--e-400)}
-input[type=range]::-moz-range-thumb{width:26px;height:26px;border:none;
-  border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.5)}
-.jrow{display:flex;flex-direction:column;gap:1px;padding:8px 0}
-.jrow .lab{display:flex;justify-content:space-between;align-items:baseline}
-.jrow .lab span{font-size:.7rem;font-weight:700;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--dim)}
-.jrow .lab b{font-size:.8rem;font-weight:600;color:var(--e-100)}
-
-/* ═══ Pose ═══ */
-#action-wrap{flex:1;display:grid;grid-template-columns:1.1fr .9fr;gap:14px;min-height:0}
-#action-left,#action-right{display:flex;flex-direction:column;gap:11px;min-height:0}
-#action-sliders,#finger-sliders{flex:1;min-height:0;overflow-y:auto;padding:2px 10px 2px 2px;
-  border-radius:18px;background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
-#action-sliders>*,#finger-sliders>*{padding-left:14px;padding-right:4px}
-#action-tools{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-#action-bottom{display:flex;gap:9px}
-#action-bottom .pill-btn{flex:1}
-
-/* ═══ Voice ═══ */
-#audio-wrap{flex:1;display:grid;grid-template-columns:.85fr 1.15fr;gap:14px;min-height:0}
-#audio-left{display:flex;flex-direction:column;gap:10px;min-height:0;
-  overflow-y:auto;padding-right:4px}
-#audio-right{display:flex;flex-direction:column;gap:11px;min-height:0}
-#qa-head{display:grid;grid-template-columns:34px 1fr 1fr 46px;gap:10px;
-  padding:0 6px 9px;border-bottom:1px solid var(--g-line)}
-#faces-head{display:grid;grid-template-columns:1fr 1fr 46px;gap:10px;
-  padding:0 6px 9px;border-bottom:1px solid var(--g-line)}
-#qa-head span,#faces-head span{font-size:.58rem;font-weight:700;letter-spacing:.2em;
-  text-transform:uppercase;color:var(--faint)}
-#qa-rows,#face-rows{flex:1;min-height:0;overflow-y:auto;padding:6px 6px 6px 0;
-  perspective:900px}
-
-/* NOTE: these class names match what the JS actually emits — .qa-row and
-   .face-row, not .qarow. The previous stylesheet named them wrongly, which is
-   why the delete buttons appeared as unstyled emoji. */
-.qa-row,.face-row{display:grid;gap:10px;align-items:center;padding:9px 10px;
-  margin-bottom:8px;border-radius:16px;
-  background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  box-shadow:var(--lift-1);transform-style:preserve-3d;
-  transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
-.qa-row{grid-template-columns:34px 1fr 1fr 46px}
-.face-row{grid-template-columns:1fr 1fr 46px}
-.qa-row:focus-within,.face-row:focus-within{
-  transform:translateZ(14px);box-shadow:var(--lift-2);border-color:var(--g-line-2)}
-.qa-row .num{font-size:.72rem;color:var(--faint);text-align:center}
-.qa-row .field,.face-row .field{min-height:46px;border-radius:12px}
-
-/* ── the dustbin ────────────────────────────────────────────────────────
-   A pressable object, not a character. Round, raised, rose-tinted, and it
-   presses INTO the surface on touch — deletion should feel like a deliberate
-   physical act, because it cannot be undone. */
-.delbtn{width:46px;height:46px;border-radius:14px;flex:none;
-  display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(180deg,rgba(255,107,132,.16),rgba(255,107,132,.06));
-  border:1px solid rgba(255,107,132,.34);color:var(--rose);
-  box-shadow:0 3px 0 rgba(120,20,38,.55),0 6px 14px rgba(0,0,0,.4),
-             inset 0 1px 0 rgba(255,255,255,.14);
-  transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
-.delbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;
-  stroke-linecap:round;stroke-linejoin:round}
-.delbtn:active{transform:translateY(3px);
-  background:linear-gradient(180deg,rgba(255,107,132,.34),rgba(255,107,132,.2));
-  box-shadow:0 0 0 rgba(120,20,38,.5),inset 0 2px 6px rgba(70,6,18,.6)}
-
-/* ── face cell: thumbnail + capture / upload ───────────────────────────── */
-.facecell{display:flex;align-items:center;gap:11px;min-width:0}
-.thumbbox{width:58px;height:58px;flex:none;border-radius:14px;overflow:hidden;
-  position:relative;display:flex;align-items:center;justify-content:center;
-  background:rgba(3,8,6,.5);border:1px solid var(--g-line);
-  box-shadow:inset 0 2px 8px rgba(0,0,0,.5)}
-.thumbbox svg{width:26px;height:26px;stroke:var(--faint);fill:none;stroke-width:1.5;
-  stroke-linecap:round;stroke-linejoin:round}
-.thumbbox img{width:100%;height:100%;object-fit:cover}
-.thumbbox.has{border-color:rgba(94,242,196,.5);
-  box-shadow:0 0 16px rgba(15,191,139,.28),inset 0 1px 0 rgba(255,255,255,.12)}
-/* the 1.5s sensor warm-up needs to be visible or the panel looks broken */
-.thumbbox.shooting::after{content:'';position:absolute;inset:0;
-  background:linear-gradient(180deg,transparent,rgba(94,242,196,.5),transparent);
-  animation:scanline 1s linear infinite}
-@keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(100%)}}
-
-.facebtns{display:flex;flex-direction:column;gap:6px;min-width:0}
-.capbtn,.upbtn{display:flex;align-items:center;gap:7px;padding:8px 12px;
-  border-radius:11px;font-size:.72rem;font-weight:600;min-height:34px;
-  cursor:pointer;white-space:nowrap;
-  border:1px solid var(--g-line);background:var(--g-1);color:var(--dim);
-  box-shadow:0 2px 0 rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);
-  transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
-.capbtn svg,.upbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;
-  stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
-/* Capture leads, because the robot's own camera gives the recogniser the
-   angle and lighting it will actually work in. */
-.capbtn{color:var(--e-100);border-color:rgba(94,242,196,.4);
-  background:linear-gradient(180deg,rgba(34,223,166,.2),rgba(15,191,139,.08))}
-.capbtn:active,.upbtn:active{transform:translateY(2px);
-  box-shadow:0 0 0 rgba(0,0,0,.3),inset 0 2px 5px rgba(0,0,0,.4)}
-.capbtn.busy{opacity:.6}
-.capbtn.busy span::after{content:'…'}
-#audio-actions{display:flex;gap:9px}
-#audio-actions .pill-btn{flex:1}
-.switchrow{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:14px 17px;border-radius:18px;background:var(--g-1);
-  border:1px solid var(--g-line);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  box-shadow:var(--lift-1)}
-.switchrow .txt{display:flex;flex-direction:column;gap:3px}
-.switchrow .txt b{font-size:.87rem;font-weight:600}
-.switchrow .txt small{font-size:.69rem;color:var(--dim)}
-
-/* ═══ Faces ═══ */
-#facepg-wrap{flex:1;display:flex;flex-direction:column;gap:11px;min-height:0}
-
-/* ═══ Media ═══ */
-#media-top{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
-#upload-hint{font-size:.71rem;color:var(--dim);flex:1;min-width:170px}
-#upload-prog{font-size:.71rem;color:var(--e-300)}
+/* ═══ MEDIA page ═══ */
+#media-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#upload-hint{font-size:.74rem;color:var(--muted);flex:1;min-width:180px}
+#upload-prog{font-size:.85rem;color:var(--blue);font-weight:600}
+#video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.vcard{background:var(--g-fill);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);border:1px solid var(--g-edge);box-shadow:var(--g-shadow), var(--g-inner);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.vcard .vname{font-size:.9rem;font-weight:600;word-break:break-all;line-height:1.3}
+.vcard .vmeta{font-size:.72rem;color:var(--muted)}
+.vcard .vrow{display:flex;gap:8px;margin-top:auto}
+.vcard .pill-btn{padding:10px 12px;min-height:46px;font-size:.85rem;flex:1}
+#video-empty{color:var(--muted);font-size:.9rem;padding:20px 4px;display:none}
 #online-row{display:flex;gap:10px}
 #online-row .field{flex:1}
-#video-grid,#yt-results{display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(174px,1fr));gap:12px;padding-bottom:8px}
-.vcard{border-radius:18px;overflow:hidden;display:flex;flex-direction:column;
-  background:var(--g-1);border:1px solid var(--g-line);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
-.vcard .thumb{aspect-ratio:16/9;background:rgba(3,8,6,.5);position:relative;
-  display:flex;align-items:center;justify-content:center}
-.vcard .thumb img{width:100%;height:100%;object-fit:cover}
-.vcard .thumb svg{width:30px;height:30px;stroke:var(--faint);fill:none;stroke-width:1.6}
-.vcard .meta{padding:10px 13px;display:flex;flex-direction:column;gap:3px}
-.vcard .meta .nm{font-size:.79rem;line-height:1.3;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.vcard .meta .sz{font-size:.64rem;color:var(--faint)}
-.vcard .acts{display:flex;border-top:1px solid var(--g-line)}
-.vcard .acts button{flex:1;border:none;background:transparent;color:var(--e-300);
-  padding:11px 0;font-size:.75rem;font-weight:600;min-height:44px}
-.vcard .acts button.rm{color:var(--rose);border-left:1px solid var(--g-line)}
-#video-empty{font-size:.84rem;color:var(--faint);padding:26px 4px}
-.sechead{display:flex;align-items:center;gap:11px;padding:1px 0 6px}
-.sechead .eyebrow{white-space:nowrap}
-.sechead .rule{flex:1;height:1px;
-  background:linear-gradient(90deg,var(--g-line-2),transparent)}
+#yt-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:12px}
+.ytcard{background:var(--g-fill);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);border:1px solid var(--g-edge);box-shadow:var(--g-shadow), var(--g-inner);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.ytcard img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#111}
+.ytcard .yt-body{padding:10px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.ytcard .vname{font-size:.85rem;font-weight:600;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ytcard .vmeta{font-size:.72rem;color:var(--muted)}
+.ytcard .pill-btn{margin:0 12px 12px;padding:10px;min-height:44px;font-size:.85rem}
 
-/* ═══ Players ═══ */
-#player,#yt-player{position:fixed;inset:0;background:#000;z-index:60;
-  display:none;flex-direction:column}
-#player.open,#yt-player.open{display:flex}
-#vid{flex:1;width:100%;background:#000;min-height:0}
-#yt-frame{flex:1;width:100%;border:none;background:#000;min-height:0}
-#player-bar,#yt-bar{height:78px;display:flex;align-items:center;gap:12px;
-  padding:0 18px;background:rgba(3,8,6,.7);
-  backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);
-  border-top:1px solid var(--g-line)}
-#player-title,#yt-title{flex:1;font-size:.84rem;color:var(--dim);overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
+/* ═══ YouTube overlay ═══ */
+#yt-player{position:fixed;inset:0;background:#000;z-index:46;display:none;flex-direction:column}
+#yt-player.open{display:flex}
+#yt-frame{flex:1;width:100%;border:none;background:#000}
+#yt-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#0B0B0D}
+#yt-title{flex:1;font-size:.82rem;color:var(--muted);word-break:break-all}
 
-/* ═══ Modals ═══ */
-.modal{position:fixed;inset:0;background:rgba(2,6,5,.66);z-index:70;
-  display:none;align-items:center;justify-content:center;padding:26px;
-  perspective:1200px;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+/* ═══ Video player overlay ═══ */
+#player{position:fixed;inset:0;background:#000;z-index:45;display:none;flex-direction:column}
+#player.open{display:flex}
+#vid{flex:1;min-height:0;width:100%;object-fit:contain;background:#000}
+#player-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#0B0B0D}
+#player-title{flex:1;font-size:.82rem;color:var(--muted);word-break:break-all}
+
+/* ═══ Modals (navy, red X — like the app) ═══ */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:50}
 .modal.open{display:flex}
-.modal .box{background:rgba(8,20,15,.72);border:1px solid var(--g-line-2);
-  border-radius:26px;padding:26px;max-width:520px;width:100%;position:relative;
-  max-height:88vh;overflow-y:auto;
-  backdrop-filter:blur(30px) saturate(150%);
-  -webkit-backdrop-filter:blur(30px) saturate(150%);
-  box-shadow:var(--lift-3);animation:modalIn .26s var(--ease)}
-@keyframes modalIn{from{opacity:0;transform:translateY(16px) rotateX(7deg) scale(.97)}
-  to{opacity:1;transform:none}}
-.modal .box h2{font-size:1.08rem;font-weight:400;line-height:1.4;margin-bottom:18px;
-  padding-right:36px}
-.modal .x{position:absolute;top:16px;right:16px;width:38px;height:38px;
-  border-radius:50%;border:1px solid var(--g-line);background:var(--g-1);
-  color:var(--dim);font-size:.95rem}
-.modal .stack{display:flex;flex-direction:column;gap:10px}
-.modal .kv{display:flex;justify-content:space-between;gap:12px;padding:11px 0;
-  border-bottom:1px solid var(--g-line);font-size:.85rem}
-.modal .kv span{color:var(--dim)}
-.modal .kv b{font-weight:600;color:var(--e-100)}
-.modal label{display:block;margin:14px 0 7px}
+.modal .box{background:rgba(28,33,56,.72);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),0 20px 60px rgba(0,0,0,.5);border-radius:24px;padding:26px;width:min(520px,92vw);
+  max-height:88vh;overflow-y:auto;position:relative}
+.modal .x{position:absolute;top:16px;right:18px;background:none;border:none;color:var(--red);
+  font-size:1.5rem;font-weight:700;line-height:1;padding:6px}
+.modal h2{font-size:1.15rem;text-align:center;margin:6px 0 20px;font-weight:700}
+.modal .stack{display:flex;flex-direction:column;gap:12px}
+.modal .row2{display:flex;gap:12px;margin-top:18px}
+.kv{display:flex;justify-content:space-between;font-size:.95rem;margin:4px 0}
+#wifi-modal .kv b{padding-right:34px}
+.kv b{font-weight:400;color:var(--muted)}
+.hint{font-size:.78rem;color:var(--muted);margin:4px 2px 0}
+#notice-check{width:74px;height:74px;margin:6px auto 14px;border-radius:50%;
+  border:3px solid var(--green);display:flex;align-items:center;justify-content:center}
+#notice-check svg{width:38px;height:38px;stroke:var(--green);fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+#notice-sub{text-align:center;color:var(--muted);font-size:.92rem;margin-top:-8px}
 
-/* ═══ Toast ═══ */
-#toast{position:fixed;left:50%;bottom:calc(var(--tabbar) + 20px);
-  transform:translateX(-50%);background:rgba(8,20,15,.8);
-  border:1px solid var(--g-line-2);color:var(--text);
-  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-  padding:13px 24px;border-radius:999px;font-size:.85rem;z-index:90;
-  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
-  white-space:nowrap;box-shadow:0 12px 34px rgba(0,0,0,.5)}
-#toast.show{opacity:1;transform:translateX(-50%) translateY(-8px)}
+/* ═══ Global on-screen keyboard ═══ */
+#gkbd{position:fixed;left:0;right:0;bottom:0;z-index:80;padding:10px 12px 12px;
+  background:rgba(14,18,28,.86);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);
+  box-shadow:0 -8px 30px rgba(0,0,0,.5);transform:translateY(110%);transition:transform .22s ease;
+  display:flex;flex-direction:column;gap:8px}
+#gkbd.open{transform:translateY(0)}
+#gkbd-preview{display:flex;gap:10px;align-items:center;padding:2px 6px;font-size:.9rem;color:var(--muted)}
+#gkbd-label{font-weight:700;color:#fff}
+#gkbd-val{flex:1;color:#cfd6e4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#gkbd-keys{display:flex;flex-direction:column;gap:7px}
+.gk-row{display:flex;gap:7px;justify-content:center}
+.gk-row button{flex:1;max-width:88px;min-height:56px;border:none;border-radius:12px;
+  background:rgba(255,255,255,.08);color:#fff;font-size:1.15rem;font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.gk-row button:active{background:var(--blue)}
+.gk-row button.wide{max-width:none;flex:2.4;font-size:.9rem}
+.gk-row button.act{background:var(--blue)}
+.gk-row button.on{background:var(--blue)}
+.vtrig{font-size:.78rem;color:var(--cyan,#5FD4D0);font-weight:600;cursor:pointer}
+.vtrig.unset{color:var(--muted);font-weight:400}
+.face-row .capbtn{border:none;border-radius:12px;min-width:52px;min-height:52px;
+  background:rgba(255,255,255,.08);color:#fff;font-size:1.25rem;
+  border:1px solid var(--g-edge);box-shadow:var(--g-shadow), var(--g-inner)}
+.face-row .capbtn:active{background:var(--blue)}
+#cap-view{position:fixed;inset:0;background:rgba(5,7,12,.92);z-index:75;display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px}
+#cap-view.open{display:flex}
+#cap-img{max-width:92%;max-height:70%;border-radius:18px;background:#000;
+  box-shadow:0 10px 50px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.1)}
+#cap-bar{display:flex;gap:10px}
+#toast{position:fixed;bottom:calc(var(--tabbar) + 12px);left:50%;transform:translateX(-50%) translateY(90px);
+  background:rgba(28,33,56,.8);backdrop-filter:var(--g-blur);-webkit-backdrop-filter:var(--g-blur);color:#fff;border-radius:999px;padding:11px 22px;font-size:.85rem;
+  transition:transform .25s;z-index:55;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+#toast.show{transform:translateX(-50%) translateY(0)}
 
-/* ═══ WiFi first-run ═══ */
-#wifi-setup{position:fixed;inset:0;background:rgba(3,8,6,.9);z-index:80;
-  display:none;flex-direction:column;padding:30px;
-  backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px)}
+/* ═══ Wi-Fi setup screen (first boot) ═══ */
+#wifi-setup{position:fixed;inset:0;background:#000;z-index:70;display:none;
+  flex-direction:row;gap:16px;padding:22px}
 #wifi-setup.open{display:flex}
-#ws-nets{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;
-  gap:8px;margin:14px 0}
-.wsnet{display:flex;align-items:center;gap:13px;padding:15px 18px;
-  background:var(--g-1);border:1px solid var(--g-line);border-radius:16px;
-  min-height:56px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-.wsnet.sel{border-color:rgba(94,242,196,.5);box-shadow:0 0 22px rgba(15,191,139,.2)}
-.wsnet .nm{flex:1;font-size:.92rem}
-.wsnet .sig{font-size:.85rem;color:var(--e-300);letter-spacing:1px}
-.wsnet .lk{font-size:.7rem;color:var(--faint)}
-#ws-status{font-size:.8rem;color:var(--dim);min-height:1.3em}
-#osk{display:none}
+#ws-left{flex:1;display:flex;flex-direction:column;gap:12px;min-width:0}
+#ws-left h1{font-size:1.3rem;font-weight:800}
+#ws-left .sub{color:var(--muted);font-size:.9rem;margin-top:-6px}
+#ws-nets{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
+.netrow{display:flex;align-items:center;gap:12px;background:var(--pill);border:none;color:#fff;
+  border-radius:999px;padding:14px 20px;font-size:.98rem;font-weight:600;text-align:left}
+.netrow.sel{background:var(--blue)}
+.netrow .sig{margin-left:auto;font-size:.75rem;color:#CFE0FF;display:flex;align-items:center;gap:8px}
+.netrow .lock{opacity:.85}
+#ws-buttons{display:flex;gap:10px}
+#ws-right{flex:1.15;display:flex;flex-direction:column;gap:10px;min-width:0}
+#ws-status{min-height:24px;font-size:.9rem;color:var(--muted)}
+#ws-status.err{color:var(--red)} #ws-status.ok{color:var(--green)}
+#ws-pass-wrap{display:flex;gap:10px}
+#ws-pass-wrap .field{flex:1;font-size:1.15rem;letter-spacing:.06em}
+/* on-screen keyboard */
+#osk{display:flex;flex-direction:column;gap:7px;margin-top:auto}
+.osk-row{display:flex;gap:7px;justify-content:center}
+.osk-row button{flex:1;max-width:74px;min-height:52px;border:none;border-radius:12px;
+  background:var(--pill);color:#fff;font-size:1.05rem;font-weight:600}
+.osk-row button:active{background:var(--blue)}
+.osk-row button.wide{max-width:none;flex:2.2;font-size:.85rem}
+.osk-row button.on{background:var(--blue)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-
 <div id="bg-aura"><i></i><i></i><i></i></div>
 <div id="bg-grid"></div>
-<div id="hud-frame" aria-hidden="true">
-  <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
-  <i class="scan"></i>
-</div>
 
-<!-- ═══ Status bar ═══ -->
+<!-- ═══ Top bar ═══ -->
 <header id="topbar">
   <div id="logo">
     <img src="/display/logo.png" alt="" onerror="this.style.display='none'">
-    <span class="wm">Lu<b>na</b></span>
   </div>
   <div class="grow"></div>
-  <div class="chip live" id="chip-mic"><span class="dot"></span><span>Listening</span></div>
-  <div class="chip" id="chip-net"><span class="dot"></span><span>Offline</span></div>
-  <div id="batt" title="Battery">
-    <div class="bar"><div id="batt-fill" style="width:100%"></div></div>
-    <span id="batt-pct" class="mono">--</span>
+  <div id="batt">
+    <svg viewBox="0 0 26 16"><rect x="1" y="2" width="21" height="12" rx="3" fill="none" stroke="#fff" stroke-width="1.6"/><rect id="batt-fill" x="3.5" y="4.5" width="16" height="7" rx="1.5" fill="#fff"/><rect x="23" y="6" width="2.6" height="4" rx="1" fill="#fff"/></svg>
+    <span id="batt-pct">--%</span>
   </div>
-  <button class="iconbtn off" id="btn-wifi" onclick="wsOpen()" aria-label="Network">
-    <svg viewBox="0 0 24 24"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5.5 5.5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+  <button class="iconbtn" id="btn-wifi" title="Wi-Fi">
+    <svg viewBox="0 0 24 24"><path d="M3 9.5C8 4.8 16 4.8 21 9.5M6 13c3.5-3.2 8.5-3.2 12 0M9.2 16.4c1.7-1.5 3.9-1.5 5.6 0"/><circle cx="12" cy="19.4" r="1.3" fill="#fff" stroke="none"/></svg>
   </button>
-  <button class="iconbtn" id="btn-gear" onclick="openModal('wifi-modal')" aria-label="Settings">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.6 13.5a7.7 7.7 0 0 0 0-3l2-1.2-2-3.4-2 1.2a7.7 7.7 0 0 0-2.6-1.5V3h-4v2.6a7.7 7.7 0 0 0-2.6 1.5l-2-1.2-2 3.4 2 1.2a7.7 7.7 0 0 0 0 3l-2 1.2 2 3.4 2-1.2a7.7 7.7 0 0 0 2.6 1.5V21h4v-2.6a7.7 7.7 0 0 0 2.6-1.5l2 1.2 2-3.4z"/></svg>
+  <button class="iconbtn" id="btn-gear" onclick="openModal('wifi-modal')" title="Wi-Fi settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.5h4l.4-2.5a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg>
   </button>
-  <button class="iconbtn" id="btn-power" onclick="openModal('power-modal')" aria-label="Power">
-    <svg viewBox="0 0 24 24"><path d="M12 3v9M7.5 6.8a7.5 7.5 0 1 0 9 0"/></svg>
+  <button class="iconbtn" id="btn-power" onclick="openModal('power-modal')" title="Power">
+    <svg viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>
   </button>
 </header>
 
+<!-- ═══ Pages ═══ -->
 <div id="pages">
 
-  <!-- ═══ LUNA — orb + transcript ═══ -->
-  <section class="page active" id="page-ben">
+  <!-- ══ BEN ══ -->
+  <section class="page active" id="page-luna">
     <div id="face-stage">
-      <div id="stage-left">
-        <div id="orb">
-          <div class="lay" id="l-hex"><svg viewBox="0 0 200 200">
-            <g class="st" stroke-width=".5" opacity=".34">
-              <circle cx="100" cy="100" r="94"/><circle cx="100" cy="100" r="72"/>
-              <path d="M100 6v188M6 100h188M34 34l132 132M166 34L34 166"/>
-            </g></svg></div>
-
-          <div class="lay" id="l-collar"><svg viewBox="0 0 200 200">
-            <g class="st" stroke-width="1" opacity=".55" id="ticks"></g>
-          </svg></div>
-
-          <div class="lay" id="l-dash"><svg viewBox="0 0 200 200">
-            <g class="st" stroke-width="1.4" opacity=".7">
-              <circle cx="100" cy="100" r="64" stroke-dasharray="3 9"/>
-              <circle cx="100" cy="100" r="55" stroke-dasharray="18 26" opacity=".6"/>
-            </g></svg></div>
-
-          <div class="lay" id="l-core"><svg viewBox="0 0 200 200">
-            <defs>
-              <radialGradient id="coreGrad">
-                <stop offset="0%" stop-color="#D7FFF2" stop-opacity=".95"/>
-                <stop offset="42%" stop-color="#22DFA6" stop-opacity=".55"/>
-                <stop offset="100%" stop-color="#0A8F69" stop-opacity="0"/>
-              </radialGradient>
-            </defs>
-            <circle class="glow" cx="100" cy="100" r="42" fill="url(#coreGrad)"/>
-            <g class="st" stroke-width="1.6">
-              <path d="M100 66l25.5 15v30L100 126 74.5 111V81z" opacity=".9"/>
-              <path d="M100 78l15 8.6v17.2L100 112l-15-8.2V86.6z" opacity=".6"/>
-            </g>
-            <circle cx="100" cy="100" r="5.5" fill="#D7FFF2"/>
-          </svg></div>
-
-          <div class="lay" id="l-arc"><svg viewBox="0 0 200 200">
-            <g class="st" stroke-width="2.4" stroke-linecap="round">
-              <path d="M100 18a82 82 0 0 1 71 41" opacity=".95"/>
-              <path d="M171 141a82 82 0 0 1-71 41" opacity=".6"/>
-              <path d="M29 141a82 82 0 0 1-.5-82" opacity=".35"/>
-            </g>
-            <g class="st" stroke-width="1.2" opacity=".5">
-              <path d="M100 30a70 70 0 0 1 60.6 35"/>
-            </g></svg></div>
-
-          <div class="lay" id="l-ret"><svg viewBox="0 0 200 200">
-            <g class="st" stroke-width="1.2" opacity=".8">
-              <path d="M100 40v14M100 146v14M40 100h14M146 100h14"/>
-              <path d="M22 42V22h20M178 42V22h-20M22 158v20h20M178 158v20h-20"
-                    stroke-width="1.6" opacity=".65"/>
-            </g></svg></div>
-
-          <div id="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-        </div>
-        <div id="hud-top"><span>SYS</span><b id="hud-state">STANDBY</b>
-          <span>·</span><span>VOICE</span><b id="hud-model">READY</b></div>
-        <div id="voice-overlay">
-          <div id="caption" class="idle">Listening</div>
-        </div>
-        <div id="hud-bot"><span>LUNA</span><b>MK I</b><span>·</span>
-          <span id="hud-clock" class="mono">--:--</span></div>
+      <div id="idle-widget">
+        <div id="iw-clock">--:--</div>
+        <div id="iw-date"></div>
+        <div id="iw-wx"></div>
+        <div id="iw-rem"></div>
       </div>
-      <div id="stage-right">
-        <div class="hd"><span class="eyebrow">Conversation</span><span class="rule" style="flex:1;height:1px;background:linear-gradient(90deg,var(--g-line-2),transparent)"></span></div>
-        <div id="facelog"></div>
+      <div id="hero">
+        <canvas id="hero-canvas" width="900" height="900"></canvas>
+        <div id="caption" class="idle">Listening…</div>
+      </div>
+      <!-- Luna's point of view. Hidden until she actually looks at
+           something: showing it permanently would hold the camera open all
+           day, and the tracker releases the device when nobody is watching. -->
+      <div id="pov">
+        <div id="pov-head"><span id="pov-dot"></span><span id="pov-label">Looking…</span></div>
+        <img id="pov-img" alt="">
+      </div>
+      <!-- Body movement: head turning towards a voice, and hand gesture while
+           speaking. One control, expandable to the two independently.
+
+           BOTTOM-LEFT deliberately. The clock sits top-left and the camera
+           view bottom-right, so this is the only corner where nothing is
+           already competing for the space — the previous version at top-left
+           sat right on top of the time.
+
+           On the Luna page rather than in a settings tab because this is the
+           switch somebody reaches for with a room full of children in front
+           of them, and it has to be one tap from wherever they are. -->
+      <div id="motion-ctl">
+        <button id="motion-main" onclick="motionToggleAll()"
+                oncontextmenu="return false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.6"/><path d="M12 7.6V14m0 0-3.2 6M12 14l3.2 6M6.5 10.5 12 9l5.5 1.5"/></svg>
+          <span id="motion-label">Motion</span>
+        </button>
+        <button id="motion-more" onclick="motionExpand()" aria-label="Options">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="motion-panel">
+          <div class="mrow"><span>Turn head to voice</span>
+            <button class="tgl" id="tgl-head-motion"
+                    onclick="motionSet('head', this)"></button></div>
+          <div class="mrow"><span>Hands while speaking</span>
+            <button class="tgl" id="tgl-hand-motion"
+                    onclick="motionSet('hands', this)"></button></div>
+          <div id="motion-note"></div>
+        </div>
       </div>
     </div>
+    <div id="facelog"></div>
   </section>
 
-  <!-- ═══ MOVE ═══ -->
+  <!-- ══ MOTION ══ -->
   <section class="page" id="page-motion">
     <div id="motion-grid">
       <div id="dpad-wrap">
         <div id="dpad">
-          <div class="blank"></div>
-          <button ontouchstart="api('/move?dir=forward')" onmousedown="api('/move?dir=forward')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Forward"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
-          <div class="blank"></div>
-          <button ontouchstart="api('/move?dir=left')" onmousedown="api('/move?dir=left')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Left"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg></button>
-          <button class="stop" onclick="api('/move?dir=stop')" aria-label="Stop"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg></button>
-          <button ontouchstart="api('/move?dir=right')" onmousedown="api('/move?dir=right')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Right"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-          <div class="blank"></div>
-          <button ontouchstart="api('/move?dir=back')" onmousedown="api('/move?dir=back')" ontouchend="api('/move?dir=stop')" onmouseup="api('/move?dir=stop')" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
-          <div class="blank"></div>
+          <div class="quads">
+            <button data-dir="forward"></button>
+            <button data-dir="right"></button>
+            <button data-dir="left"></button>
+            <button data-dir="backward"></button>
+          </div>
+          <span class="arrow up">▲</span><span class="arrow down">▼</span>
+          <span class="arrow left">◀</span><span class="arrow right">▶</span>
+          <button id="dpad-center" onclick="api('/move?dir=stop');Bot.setDrive('stop')">STOP
+          </button>
         </div>
       </div>
       <div id="motion-side">
-        <div class="rowcard">
-          <div class="top">
-            <span class="eyebrow">Drive speed</span>
-            <span class="val mono"><b id="speed-out">50</b><small>%</small></span>
-          </div>
-          <input type="range" id="speed" min="0" max="100" value="50"
-                 oninput="paint(this);$('#speed-out').textContent=this.value;thr('sp',()=>api('/speed?value='+this.value))">
+        <div class="slider-pill" style="background:var(--blue)">
+          <label>Speed</label>
+          <input type="range" min="0" max="100" value="50" id="speed">
+          <output>50</output>
         </div>
-        <div class="switchrow">
-          <div class="txt"><b>Obstacle stop</b><small>Halt before hitting something</small></div>
-          <button class="toggle on" onclick="tglObstacle(this)" aria-label="Obstacle stop"></button>
-        </div>
-        <div class="switchrow">
-          <div class="txt"><b>Face tracking</b><small>Follow the nearest face</small></div>
-          <button class="toggle" id="tgl-track" onclick="tglTrack(this,'#tgl-track2')" aria-label="Face tracking"></button>
-        </div>
-        <div class="rowcard" style="flex:1;justify-content:flex-end">
-          <button class="pill-btn outline red" onclick="doEstop()">Emergency stop</button>
-        </div>
+        <div class="toggle-line"><span>Obstacle avoidance</span>
+          <button class="tgl on" id="tgl-obstacle" onclick="tglObstacle(this)"></button></div>
+        <div class="toggle-line"><span>Face tracking</span>
+          <button class="tgl" id="tgl-track" onclick="tglTrack(this)"></button></div>
       </div>
     </div>
   </section>
 
-  <!-- ═══ POSE ═══ -->
+  <!-- ══ ACTION ══ -->
   <section class="page" id="page-action">
     <div id="action-wrap">
       <div id="action-left">
         <div class="seg" id="hand-seg">
-          <button class="on" data-hand="left">Left arm</button>
-          <button data-hand="right">Right arm</button>
-          <button data-hand="both">Both arms</button>
+          <button class="on" data-hand="left">Left Hand</button>
+          <button data-hand="right">Right Hand</button>
+          <button data-hand="both">L&amp;R Hands</button>
         </div>
         <div id="action-sliders" class="scrolly"></div>
       </div>
       <div id="action-right">
-        <div class="sechead"><span class="eyebrow">Fingers</span><span class="rule"></span></div>
-        <div id="finger-sliders" class="scrolly"></div>
         <div id="action-tools">
-          <button class="pill-btn ghost" onclick="api('/home');toast('Homing')">Home</button>
-          <button class="pill-btn ghost" onclick="savePose()">Save pose</button>
-          <button class="pill-btn ghost" onclick="api('/loop_undo');toast('Last pose removed')">Undo</button>
-          <button class="pill-btn ghost" onclick="confirmAct('Clear all poses','This deletes every saved pose. It cannot be undone.','/loop_delete')">Clear</button>
+          <button class="roundbtn" onclick="goHome()" title="Home">
+            <svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 10v9h12v-9"/></svg></button>
+          <button class="roundbtn" onclick="api('/loop_undo');toast('Last pose removed')" title="Undo">
+            <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h9a7 7 0 0 1 0 14h-2"/></svg></button>
+          <button class="roundbtn" onclick="api('/loop_delete');toast('All poses cleared')" title="Clear" style="background:#D14343">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
         </div>
+        <!-- All five fingers together. The common case is opening or closing
+             the whole hand, so it belongs on the page rather than behind a
+             modal; the modal stays for setting fingers individually. -->
+        <div class="slider-pill">
+          <label>Fingers</label>
+          <input type="range" min="0" max="100" value="0" id="fingers-all"
+                 data-part="fingers">
+          <output>0</output>
+        </div>
+        <button class="fingers-pill" onclick="openModal('fingers-modal')">
+          <b>Individual fingers</b><span class="chev">▼</span>
+        </button>
+        <div class="slider-pill">
+          <label>Servo Speed</label>
+          <input type="range" min="0" max="2000" value="1000" id="servo-speed">
+          <output>1000</output>
+        </div>
+        <div style="flex:1"></div>
         <div id="action-bottom">
-          <button class="pill-btn amber" id="loop-btn" onclick="toggleLoopRun(this)">Run sequence</button>
+          <button class="pill-btn outline grow" id="loop-btn" onclick="toggleLoopRun(this)">Start Loop</button>
+          <button class="pill-btn blue grow" onclick="savePose()">Save</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ═══ VOICE ═══ -->
+  <!-- ══ AUDIO ══ -->
   <section class="page" id="page-audio">
     <div id="audio-wrap">
       <div id="audio-left" class="scrolly">
-        <div class="sechead"><span class="eyebrow">Identity</span><span class="rule"></span></div>
-        <label class="eyebrow" for="robot-name">Name</label>
-        <input class="field" id="robot-name" placeholder="Luna">
-        <label class="eyebrow" for="welcome-speech">Greeting</label>
-        <input class="field" id="welcome-speech" placeholder="Hello, I am Luna">
-        <div class="rowcard" style="margin-top:4px">
-          <div class="top">
-            <span class="eyebrow">Volume</span>
-            <span class="val mono"><b id="vol-out">100</b><small>%</small></span>
-          </div>
-          <input type="range" id="vol" min="0" max="100" value="100"
-                 oninput="paint(this);$('#vol-out').textContent=this.value;thr('vol',()=>api('/settings?volume='+this.value))">
+        <input class="field" id="robot-name" placeholder="Robot Name: Luna">
+        <div class="label">Welcome Speech</div>
+        <textarea class="field" id="welcome-speech" placeholder="Type your speech..."></textarea>
+        <div class="slider-pill">
+          <label>Volume</label>
+          <input type="range" min="0" max="100" value="70" id="vol">
+          <output>70</output>
         </div>
-        <div class="switchrow" style="margin-top:4px">
-          <div class="txt"><b>Online answers</b><small>Ask the internet when she doesn't know</small></div>
-          <button class="toggle on" id="tgl-chat" onclick="tglChat(this)" aria-label="Online answers"></button>
-        </div>
-        <button class="pill-btn blue" style="margin-top:4px" onclick="saveAudio()">Save identity</button>
+        <div class="toggle-line"><span>Online Chat</span>
+          <button class="tgl on" id="tgl-chat" onclick="tglChat(this)"></button></div>
+        <button class="pill-btn blue" onclick="saveAudio()">Save name &amp; speech</button>
       </div>
-      <div id="audio-right">
-        <div class="sechead"><span class="eyebrow">Things she knows</span><span class="rule"></span></div>
-        <div id="qa-head"><span>#</span><span>Question</span><span>Answer</span><span></span></div>
+      <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+        <div id="qa-head"><span>Questions</span><span>Answers</span></div>
         <div id="qa-rows" class="scrolly"></div>
+        <button class="addrow" onclick="addQaRow()">+ Add new row</button>
         <div id="audio-actions">
-          <button class="pill-btn ghost" onclick="addQaRow()">Add</button>
-          <button class="pill-btn blue" onclick="saveQa()">Save answers</button>
+          <button class="pill-btn blue grow" onclick="saveQa()">Save Q&amp;A</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ═══ FACES ═══ -->
+  <!-- ══ FACE ══ -->
   <section class="page" id="page-face">
     <div id="facepg-wrap">
-      <div class="switchrow">
-        <div class="txt"><b>Face tracking</b><small>Her head follows the nearest person</small></div>
-        <button class="toggle" id="tgl-track2" onclick="tglTrack(this,'#tgl-track')" aria-label="Face tracking"></button>
-      </div>
-      <div class="sechead"><span class="eyebrow">People she recognises</span><span class="rule"></span></div>
-      <div id="faces-head"><span>#</span><span>Photo</span><span>What she says</span><span></span></div>
+      <div class="toggle-line"><span>Face Tracking</span>
+        <button class="tgl" id="tgl-track2" onclick="tglTrack(this,true)"></button></div>
+      <div class="label">Upload your faces and type speeches</div>
+      <div id="faces-head"><span>Faces</span><span>Speech</span></div>
       <div id="face-rows" class="scrolly"></div>
-      <div id="audio-actions">
-        <button class="pill-btn ghost" onclick="addFaceRow()">Add person</button>
-        <button class="pill-btn blue" onclick="saveFaces()">Save people</button>
-      </div>
+      <button class="addrow" onclick="addFaceRow()">+ Add new face</button>
+      <button class="pill-btn blue" onclick="saveFaces()">Upload</button>
     </div>
   </section>
 
-  <!-- ═══ MEDIA ═══ -->
+  <!-- ══ MEDIA ══ -->
   <section class="page" id="page-media">
     <div id="media-top">
       <label class="pill-btn blue" style="cursor:pointer">
         Upload video
         <input type="file" id="vfile" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogv,.m4v" hidden>
       </label>
-      <span id="upload-hint">MP4 or WebM play best. You can also upload from your phone at this address.</span>
+      <input class="field" id="vtrigger" placeholder="Trigger word (optional) — say “play a video on …”" style="max-width:340px">
+      <span id="upload-hint">MP4 or WebM play best</span>
       <span id="upload-prog" class="mono"></span>
     </div>
     <div id="online-row">
-      <input class="field" id="yt-query" placeholder="Search online videos, or just ask Luna out loud">
+      <input class="field" id="yt-query" placeholder="Search online videos… (or just ask Luna by voice)">
       <button class="pill-btn blue" onclick="searchOnline()">Search</button>
+      <!-- Hidden until there is something to clear. A permanently visible
+           Clear button on an empty list is a control that does nothing,
+           which teaches people to ignore it. -->
+      <button class="pill-btn ghost" id="yt-clear" onclick="clearSearch()"
+              style="display:none">Clear</button>
     </div>
     <div class="scrolly" style="flex:1">
       <div id="yt-results"></div>
       <div id="video-grid"></div>
-      <div id="video-empty">No videos yet. Upload one and it plays right here on Luna's screen.</div>
+      <div id="video-empty">No videos yet. Upload one and it can play right here on Luna's screen.</div>
     </div>
   </section>
 </div>
 
-<!-- ═══ Tabs ═══ -->
+<!-- ═══ Bottom tabs ═══ -->
 <nav id="tabbar">
-  <button class="tab active" data-page="ben">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 20.5a8.5 8.5 0 0 0 0-17"/></svg>
-    Luna
-  </button>
-  <button class="tab" data-page="motion">
-    <svg viewBox="0 0 24 24"><circle cx="7" cy="17" r="3"/><circle cx="17" cy="17" r="3"/><path d="M7 14V9a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v5"/></svg>
-    Move
-  </button>
-  <button class="tab" data-page="action">
-    <svg viewBox="0 0 24 24"><path d="M8 21V11m0 0V6a2 2 0 1 1 4 0v5m0 0V5a2 2 0 1 1 4 0v6m0 0V8a2 2 0 1 1 4 0v8a5 5 0 0 1-5 5H8a4 4 0 0 1-4-4v-2"/></svg>
-    Pose
-  </button>
-  <button class="tab" data-page="audio">
-    <svg viewBox="0 0 24 24"><path d="M12 3v18M7 8v8M17 8v8M2.5 11v2M21.5 11v2"/></svg>
-    Voice
-  </button>
-  <button class="tab" data-page="face">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="9.5" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/><rect x="3" y="3" width="18" height="18" rx="5"/></svg>
-    Faces
-  </button>
-  <button class="tab" data-page="media">
-    <svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="3.5"/><path d="M10.5 9.5l5 2.5-5 2.5z"/></svg>
-    Media
-  </button>
+  <button class="tab active" data-page="luna">Talk to Luna</button>
+  <button class="tab" data-page="media">Media</button>
+  <button class="tab" data-page="action">Action</button>
+  <button class="tab" data-page="audio">Speech AI</button>
+  <button class="tab" data-page="face">Vision AI</button>
+  <button class="tab" data-page="motion">Drive</button>
 </nav>
 
-<!-- ═══ Local video player ═══ -->
+<!-- ═══ Video player ═══ -->
 <div id="player">
   <video id="vid" controls playsinline preload="auto"></video>
   <div id="player-bar">
     <span id="player-title" class="mono"></span>
-    <button class="pill-btn ghost" id="player-loop" onclick="toggleLoop(this)">Loop: off</button>
+    <button class="pill-btn outline" id="player-loop" onclick="toggleLoop(this)">Loop: off</button>
     <button class="pill-btn blue" onclick="stopVideo()">Close</button>
   </div>
 </div>
@@ -991,175 +789,197 @@ input[type=range]::-moz-range-thumb{width:26px;height:26px;border:none;
   </div>
 </div>
 
-<!-- ═══ Power ═══ -->
+<!-- ═══ Power modal ═══ -->
 <div class="modal" id="power-modal"><div class="box">
   <button class="x" onclick="closeModal('power-modal')">✕</button>
-  <h2>Shut Luna down?</h2>
+  <h2>Are you sure you want to shut down your robot?</h2>
   <div class="stack">
-    <button class="pill-btn outline red" onclick="doEstop()">Emergency stop</button>
-    <button class="pill-btn ghost" onclick="api('/restart');closeModal('power-modal');notice('Restarting','Luna will be back in about a minute.')">Restart</button>
-    <button class="pill-btn blue" onclick="api('/shutdown');closeModal('power-modal');notice('Shutting down','Luna is parking her arms and powering off.')">Shut down</button>
+    <button class="pill-btn outline red" onclick="doEstop()">Emergency Stop</button>
+    <button class="pill-btn outline" onclick="api('/restart');closeModal('power-modal');notice('Restarting…','Luna will be back in about a minute.')">Restart</button>
+    <button class="pill-btn blue" onclick="api('/shutdown');closeModal('power-modal');notice('Shutting down','Luna is parking her arms and powering off.')">Shutdown</button>
   </div>
 </div></div>
 
-<!-- ═══ Network ═══ -->
+<!-- ═══ WiFi settings modal ═══ -->
 <div class="modal" id="wifi-modal"><div class="box">
   <button class="x" onclick="closeModal('wifi-modal')">✕</button>
-  <h2>Network</h2>
-  <div class="kv"><span>Factory network</span><b>LunaRobot</b></div>
-  <div class="kv"><span>Factory password</span><b>luna1234</b></div>
-  <div class="kv"><span>Robot address</span><b class="mono">192.168.4.1</b></div>
-  <label class="eyebrow" for="wifi-ssid">New network name</label>
-  <input class="field" id="wifi-ssid" placeholder="Network name">
-  <label class="eyebrow" for="wifi-pass">New password</label>
-  <input class="field" id="wifi-pass" placeholder="At least 8 characters">
-  <div class="stack" style="margin-top:16px">
-    <button class="pill-btn blue" onclick="uploadWifi()">Update network</button>
+  <div class="kv"><span>Factory Network:</span><b>LunaRobot</b></div>
+  <div class="kv"><span>Factory Password:</span><b>luna1234</b></div>
+  <div class="kv"><span>Robot Address:</span><b>192.168.4.1 · fixed</b></div>
+  <div class="label" style="margin-top:14px">New Wifi Username</div>
+  <input class="field" id="wifi-ssid" placeholder="technovation">
+  <div class="label" style="margin-top:12px">New Wifi Password</div>
+  <input class="field" id="wifi-pass" placeholder="12345678">
+  <div class="hint">Min 8 characters</div>
+  <div class="row2"><button class="pill-btn blue grow" onclick="uploadWifi()">Upload</button></div>
+</div></div>
+
+<!-- ═══ Fingers modal ═══ -->
+<div class="modal" id="fingers-modal"><div class="box">
+  <button class="x" onclick="closeModal('fingers-modal')">✕</button>
+  <h2 style="text-align:left;margin-top:0">Control Fingers</h2>
+  <!-- Master: moves all five at once and keeps the individual sliders in
+       step, so the modal never shows values that contradict the hand. -->
+  <div class="slider-pill" style="margin-bottom:6px">
+    <label>All fingers</label>
+    <input type="range" min="0" max="100" value="0" id="fingers-master">
+    <output>0</output>
+  </div>
+  <div class="stack" id="finger-sliders"></div>
+  <div class="row2">
+    <button class="pill-btn outline grow" onclick="sendFingersJson()">Save</button>
+    <button class="pill-btn blue grow" onclick="closeModal('fingers-modal')">Done</button>
   </div>
 </div></div>
 
-<!-- ═══ Confirm ═══ -->
+<!-- ═══ Notice modal (success) ═══ -->
+<div class="modal" id="notice-modal"><div class="box">
+  <button class="x" onclick="closeModal('notice-modal')">✕</button>
+  <div id="notice-check"><svg viewBox="0 0 24 24"><path d="m5 13 4.2 4L19 7"/></svg></div>
+  <h2 id="notice-title" style="margin-bottom:8px"></h2>
+  <p id="notice-sub"></p>
+</div></div>
+
+<!-- ═══ Confirm modal ═══ -->
 <div class="modal" id="confirm-modal"><div class="box">
   <button class="x" onclick="closeModal('confirm-modal')">✕</button>
-  <h2 id="m-title">Are you sure?</h2>
-  <p id="m-text" style="font-size:.87rem;color:var(--dim);line-height:1.55;margin-bottom:18px"></p>
-  <div class="stack">
-    <button class="pill-btn ghost" onclick="closeModal('confirm-modal')">Cancel</button>
-    <button class="pill-btn outline red" id="m-yes">Yes, do it</button>
+  <h2 id="m-title"></h2>
+  <p id="m-text" style="text-align:center;color:var(--muted);font-size:.92rem;margin:-8px 0 18px"></p>
+  <div class="row2">
+    <button class="pill-btn outline grow" onclick="closeModal('confirm-modal')">Cancel</button>
+    <button class="pill-btn blue grow" id="m-yes">Yes</button>
   </div>
 </div></div>
 
-<!-- ═══ Notice ═══ -->
-<div class="modal" id="notice-modal"><div class="box">
-  <h2 id="notice-title"></h2>
-  <p id="notice-sub" style="font-size:.87rem;color:var(--dim);line-height:1.55"></p>
-</div></div>
-
-<!-- ═══ WiFi first-run ═══ -->
+<!-- ═══ Wi-Fi setup (first boot) ═══ -->
 <div id="wifi-setup">
-  <div class="sechead"><span class="eyebrow">Connect Luna to a network</span><span class="rule"></span></div>
-  <p style="font-size:.85rem;color:var(--dim);line-height:1.55">
-    Luna needs a network for online answers and videos. Everything else works without one.</p>
-  <div id="ws-nets"></div>
-  <label class="eyebrow" id="ws-passlabel" for="ws-pass" style="display:none">Password</label>
-  <input class="field" id="ws-pass" type="password" placeholder="Password" style="display:none">
-  <div id="ws-status"></div>
-  <div class="stack" style="margin-top:14px">
-    <button class="pill-btn blue" id="ws-connect" onclick="wsConnect()" disabled>Connect</button>
-    <button class="pill-btn ghost" onclick="wsScan()">Scan again</button>
-    <button class="pill-btn ghost" onclick="wsSkip()">Skip for now</button>
+  <div id="ws-left">
+    <h1>Connect Luna to Wi-Fi</h1>
+    <div class="sub">Pick your network — needed for online videos and AI chat.</div>
+    <div id="ws-nets"><div style="color:var(--muted);padding:8px">Scanning…</div></div>
+    <div id="ws-buttons">
+      <button class="pill-btn outline grow" onclick="wsScan()">Rescan</button>
+      <button class="pill-btn outline grow" onclick="wsSkip()">Continue offline</button>
+    </div>
+  </div>
+  <div id="ws-right">
+    <div class="label" id="ws-passlabel">Password</div>
+    <div id="ws-pass-wrap">
+      <input class="field" id="ws-pass" placeholder="Select a network first" readonly>
+      <button class="pill-btn blue" id="ws-connect" onclick="wsConnect()">Connect</button>
+    </div>
+    <div id="ws-status"></div>
+    <div id="osk"></div>
+  </div>
+</div>
+
+<div id="rem-banner">
+  <span class="bell">⏰</span>
+  <div class="txt"><span id="rem-text"></span><small>Reminder</small></div>
+  <button class="pill-btn blue" onclick="hideReminder()">Dismiss</button>
+</div>
+
+<!-- ═══ Face tracking overlay ═══ -->
+<div id="track-view">
+  <div id="tv-wrap">
+    <img id="tv-img" alt="">
+    <div id="tv-boxes"></div>
+  </div>
+  <div id="tv-bar">
+    <span id="tv-state">CAMERA ONLY</span>
+    <span id="tv-hint">Tap a face to follow — the head stays still until you do</span>
+    <button class="pill-btn outline" onclick="calibrateAxes()" title="measure which way the head moves">Calibrate</button>
+    <button class="pill-btn outline" onclick="flipAxis('ud')" title="head tilts the wrong way">⇅</button>
+    <button class="pill-btn outline" onclick="flipAxis('lr')" title="head turns the wrong way">⇄</button>
+    <button class="pill-btn outline" onclick="followNearest()">Nearest face</button>
+    <button class="pill-btn outline" onclick="clearTarget()">Clear target</button>
+    <button class="pill-btn blue" onclick="stopTracking()">Turn off</button>
+  </div>
+</div>
+
+<div id="face-card" onclick="hideFaceCard()">
+  <img id="fc-photo" alt="">
+  <div id="fc-initial"></div>
+  <div><div id="fc-name"></div><div id="fc-greet"></div></div>
+</div>
+
+<!-- Low-battery alert banner -->
+<div id="batt-alert" style="position:fixed;bottom:var(--tabbar);left:0;right:0;z-index:44;
+     background:#dc2626;color:#fff;text-align:center;padding:13px;
+     font-size:1.15rem;font-weight:700;display:none;
+     box-shadow:0 -4px 20px rgba(0,0,0,.4);">
+  ⚠️ Low Battery — please charge the robot
+</div>
+
+<!-- ═══ Global on-screen keyboard ═══ -->
+<div id="gkbd">
+  <div id="gkbd-preview"><span id="gkbd-label"></span><span id="gkbd-val"></span></div>
+  <div id="gkbd-keys"></div>
+</div>
+
+<!-- ═══ Trigger word modal ═══ -->
+<div class="modal" id="trig-modal">
+  <div class="box">
+    <h3>Trigger word</h3>
+    <p class="sub">Say “Luna, play a video on <b>this word</b>” to play it.</p>
+    <input class="field" id="trig-input" placeholder="e.g. drilling machine">
+    <div class="mrow">
+      <button class="pill-btn outline grow" onclick="closeModal('trig-modal')">Cancel</button>
+      <button class="pill-btn blue grow" onclick="saveTrigger()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Camera capture (Vision AI) ═══ -->
+<div id="cap-view">
+  <img id="cap-img" alt="">
+  <div id="cap-bar">
+    <button class="pill-btn outline" onclick="closeCapture()">Cancel</button>
+    <button class="pill-btn outline" onclick="capShoot()">Retake</button>
+    <button class="pill-btn blue" onclick="capUse()">Use Photo</button>
   </div>
 </div>
 
 <div id="toast"></div>
-<div id="osk"></div>
 
 <script>
-/* Lay the ring of bars around the orb. Done in JS so the bar count can change
-   without hand-writing 14 nth-child rules, and so the transform origin stays
-   correct if the orb size changes with the viewport. */
-/* ── reactor: tick collar ──────────────────────────────────────────────
-   60 marks, every fifth one longer. Generated rather than hand-written: 60
-   <line> elements in the markup would be unreadable, and the every-fifth rule
-   would be invisible to anyone editing it. */
-(function buildTicks(){
-  const g=document.getElementById('ticks'); if(!g) return;
-  const N=60, cx=100, cy=100, rOut=88;
-  let d='';
-  for(let i=0;i<N;i++){
-    const major = i%5===0;
-    const len = major ? 9 : 4.5;
-    const a = (Math.PI*2/N)*i - Math.PI/2;
-    const x1 = cx + Math.cos(a)*(rOut-len), y1 = cy + Math.sin(a)*(rOut-len);
-    const x2 = cx + Math.cos(a)*rOut,       y2 = cy + Math.sin(a)*rOut;
-    d += `M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`;
-  }
-  const p=document.createElementNS('http://www.w3.org/2000/svg','path');
-  p.setAttribute('d',d); p.setAttribute('class','st'); p.setAttribute('stroke-width','1');
-  g.appendChild(p);
-})();
-
-/* ── reactor: level bars ───────────────────────────────────────────────
-   Laid out from the reactor's measured size, because it is sized in vh and a
-   hardcoded radius would be wrong on any screen but the one it was written on.
-   Bars fill a 150 degree arc down each side, leaving the top and bottom clear
-   for the HUD readouts. */
-function ringLayout(){
-  const w=document.getElementById('wave'), orb=document.getElementById('orb');
-  if(!w||!orb) return;
-  const R = orb.getBoundingClientRect().width/2 + 16;
-  if(!R || R < 30) return;                       // not laid out yet
-  const bars=[...w.children], n=bars.length, half=n/2;
-  bars.forEach((b,i)=>{
-    const side = i < half ? 1 : -1;              // right side, then left
-    const k = (i % half) / (half - 1);           // 0..1 down the arc
-    // +/-15 to +/-165 degrees: two symmetric arcs that leave the top and
-    // bottom of the reactor clear for the HUD readouts.
-    const a = side > 0 ? (15 + k*150) : (-15 - k*150);
-    b.style.transform =
-      `translate(-50%,-50%) rotate(${a}deg) translateY(${-R}px) rotate(${-a}deg)`;
-    b.style.animationDelay = (k*0.9).toFixed(2)+'s';
-  });
-}
-ringLayout();
-addEventListener('resize', ringLayout);
-// The reactor lives on a page that may be hidden on first paint, so an early
-// measurement reads zero. Re-run after layout settles.
-requestAnimationFrame(()=>requestAnimationFrame(ringLayout));
-
-/* ── HUD readouts ──────────────────────────────────────────────────────
-   The state word mirrors what the robot is actually doing, so the reactor is
-   an instrument rather than decoration. */
-function hudClock(){
-  const c=document.getElementById('hud-clock');
-  if(c) c.textContent=new Date().toTimeString().slice(0,5);
-}
-hudClock(); setInterval(hudClock, 20000);
-/* One place that maps a voice-loop state to what the screen shows, so the
-   reactor, the HUD word and the caption can never disagree with each other.
-   Each state gets its own class on #face-stage; the CSS does the rest.
-
-   'thinking' is the one that mattered: a network answer takes about two
-   seconds, and without it the reactor sat on STANDBY through the wait, which
-   read as the robot having missed the question. */
-const VOICE_STATES = {
-  wake:      {word:'AWAKE',    cls:'st-wake',     caption:'Yes?'},
-  listening: {word:'LISTENING',cls:'st-listening',caption:'Listening'},
-  followup:  {word:'LISTENING',cls:'st-listening',caption:'Anything else?'},
-  thinking:  {word:'THINKING', cls:'st-thinking', caption:'Thinking…'},
-  // no cls: the speaking look is driven by the .speaking class, which
-  // setVoiceState toggles below and speech_start also sets.
-  speaking:  {word:'SPEAKING', cls:'',            caption:null},
-  idle:      {word:'STANDBY',  cls:'',            caption:'Listening'},
-};
-function setVoiceState(name){
-  const st = VOICE_STATES[name] || VOICE_STATES.idle;
-  const s  = document.getElementById('hud-state');
-  if(s) s.textContent = st.word;
-  const stage = document.getElementById('face-stage');
-  if(stage){
-    Object.values(VOICE_STATES).forEach(v=>{ if(v.cls) stage.classList.remove(v.cls); });
-    if(st.cls) stage.classList.add(st.cls);
-    // 'speaking' also drives the existing .speaking class the reactor
-    // animations already key off, so both stay in step.
-    stage.classList.toggle('speaking', name==='speaking');
-  }
-  // caption:null means leave the text alone — speech_start is about to write
-  // the actual sentence, and overwriting it would flash placeholder text.
-  if(st.caption!==null && cap){
-    cap.textContent = st.caption;
-    cap.classList.toggle('idle', name==='idle' || name==='listening');
-  }
-}
-function hudState(word){
-  const s=document.getElementById('hud-state');
-  if(s) s.textContent=word;
-}
+/* ═════════ CONFIG ═════════ */
 const API = '';
-const HAND_PARTS   = ['head','lateral','shoulder','forearm','elbow','wrist'];
+/* ═══ LUNA JOINTS ═══════════════════════════════════════════════════════
+   Ben had six joints sharing one default of 1000. Luna has ten per arm plus
+   three on the body, and their homes differ — so a single shared default is
+   no longer possible: pressing Home would move every slider to 1000, which is
+   home for the wrists and the head and wrong for everything else.
+
+   Each joint therefore carries its own home, range and send-scale.
+
+   scale: what the slider SHOWS is multiplied by this before sending. Fingers
+   are shown 0-100 because that is how they are specified, but the firmware
+   maps every POS: value over 0-2000 — so an unscaled 100 would reach only 5%
+   of the finger's travel.
+*/
+const JOINTS = {
+  //          min   max  home  scale   label
+  shoulder: {min:0, max:2000, home:0,    scale:1,  label:'Shoulder'},
+  forearm:  {min:0, max:2000, home:0,    scale:1,  label:'Forearm'},
+  elbow:    {min:0, max:2000, home:0,    scale:1,  label:'Elbow'},
+  wristLR:  {min:0, max:2000, home:1000, scale:1,  label:'Wrist L/R'},
+  wristUD:  {min:0, max:2000, home:1000, scale:1,  label:'Wrist U/D'},
+  lateral:  {min:0, max:2000, home:0,    scale:1,  label:'Lateral'},
+  headLR:   {min:0, max:2000, home:1000, scale:1,  label:'Head L/R'},
+  headUD:   {min:0, max:2000, home:1000, scale:1,  label:'Head U/D'},
+  thumb:    {min:0, max:100,  home:0,    scale:20, label:'Thumb'},
+  index:    {min:0, max:100,  home:0,    scale:20, label:'Index'},
+  middle:   {min:0, max:100,  home:0,    scale:20, label:'Middle'},
+  ring:     {min:0, max:100,  home:0,    scale:20, label:'Ring'},
+  pinky:    {min:0, max:100,  home:0,    scale:20, label:'Pinky'},
+};
+// Per-arm joints, then the single body servos, then the fingers.
+const HAND_PARTS   = ['shoulder','forearm','elbow','wristLR','wristUD'];
+const BODY_PARTS   = ['lateral','headLR','headUD'];
 const FINGER_PARTS = ['thumb','index','middle','ring','pinky'];
-const SERVO_MIN=0, SERVO_MAX=1000, SERVO_DEF=500;   // joint sliders
-const FINGER_MIN=0, FINGER_MAX=100, FINGER_DEF=50;  // finger sliders (matches app UI)
+const ALL_PARTS    = [...HAND_PARTS, ...BODY_PARTS, ...FINGER_PARTS];
+const homeOf = p => (JOINTS[p] ? JOINTS[p].home : 0);
 
 /* ═════════ helpers ═════════ */
 const $=s=>document.querySelector(s);
@@ -1174,15 +994,9 @@ function notice(title,sub){ $('#notice-title').textContent=title;
   $('#notice-sub').textContent=sub||''; openModal('notice-modal'); }
 
 /* slider blue-fill paint */
-function paint(r){
-  // Sets --p only; the track colour comes from the stylesheet so the emerald
-  // gradient is defined in one place instead of being rebuilt here.
-  const p=(r.value-r.min)/(r.max-r.min)*100;
-  r.style.setProperty('--p', p+'%');
-  const o=r.closest('.jrow')?.querySelector('output')
-       || r.closest('.slider-pill')?.querySelector('output');
-  if(o) o.textContent=r.value;
-}
+function paint(r){ const p=(r.value-r.min)/(r.max-r.min)*100;
+  r.style.background=`linear-gradient(90deg,var(--blue) ${p}%,var(--track) ${p}%)`;
+  const o=r.closest('.slider-pill')?.querySelector('output'); if(o) o.textContent=r.value; }
 document.querySelectorAll('input[type=range]').forEach(paint);
 
 /* ═════════ tabs ═════════ */
@@ -1190,29 +1004,47 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   t.classList.add('active'); $('#page-'+t.dataset.page).classList.add('active');
-  if(t.dataset.page==='ben') Bot.resize();
+  if(t.dataset.page==='luna') Bot.resize();   // page id was renamed
   if(t.dataset.page==='media') loadVideos();
 }));
 
 /* ═════════ top-bar actions ═════════ */
 function doEstop(){ api('/estop'); closeModal('power-modal'); toast('EMERGENCY STOP'); }
-function uploadWifi(){
+async function uploadWifi(){
   const ssid=$('#wifi-ssid').value.trim(), pass=$('#wifi-pass').value;
   if(!ssid){ toast('Enter a WiFi name'); return; }
   if(pass.length<8){ toast('Password needs 8+ characters'); return; }
-  api('/settings?wifi_ssid='+encodeURIComponent(ssid)+'&wifi_password='+encodeURIComponent(pass));
-  closeModal('wifi-modal');
-  notice('Network updating','Please reconnect using the updated network details.');
+  try{
+    const r=await fetch(API+'/display/ap_update?ssid='+encodeURIComponent(ssid)
+        +'&password='+encodeURIComponent(pass));
+    const d=await r.json();
+    if(r.ok){
+      closeModal('wifi-modal');
+      $('#wifi-ssid').value=''; $('#wifi-pass').value='';
+      notice('Hotspot updated', d.applied
+        ? ('New network "'+ssid+'" is starting — reconnect your phone to it.')
+        : ('Saved. "'+ssid+'" will be used next time the hotspot starts.'));
+    }else toast(d.message||'Update failed');
+  }catch{ toast('Update failed'); }
 }
 
 /* ═════════ motion ═════════ */
 $('#speed').addEventListener('input',function(){ paint(this);
   thr('speed',()=>api('/speed?value='+this.value)); });
+const _ss=$('#servo-speed');
+if(_ss) _ss.addEventListener('input',function(){ paint(this);
+  const o=this.closest('.slider-pill')?.querySelector('output');
+  if(o) o.textContent=this.value;
+  // /topspeed did not exist in server.py, so this slider had nothing to talk
+  // to — which is why joint speed appeared to do nothing while homing (driven
+  // by the firmware's own HOME_DPS) worked fine. Add the route; see
+  // luna_display_routes.py.
+  thr('sspeed',()=>api('/topspeed?value='+this.value)); });
 document.querySelectorAll('#dpad .quads button').forEach(b=>{
   const dir=b.dataset.dir;
-  const go=e=>{ e.preventDefault(); b.classList.add('held'); api('/move?dir='+dir); };
+  const go=e=>{ e.preventDefault(); b.classList.add('held'); api('/move?dir='+dir); Bot.setDrive(dir); };
   const halt=()=>{ if(!b.classList.contains('held'))return;
-    b.classList.remove('held'); api('/move?dir=stop'); };
+    b.classList.remove('held'); api('/move?dir=stop'); Bot.setDrive('stop'); };
   b.addEventListener('pointerdown',go);
   b.addEventListener('pointerup',halt);
   b.addEventListener('pointercancel',halt);
@@ -1220,41 +1052,160 @@ document.querySelectorAll('#dpad .quads button').forEach(b=>{
 });
 function flip(el){ el.classList.toggle('on'); return el.classList.contains('on'); }
 function tglObstacle(el){ api('/obstacle_avoidance?value='+(flip(el)?'up':'down')); }
-function tglTrack(el,mirror){ const on=flip(el); api('/face_tracking?value='+on);
-  const other=mirror?$('#tgl-track'):$('#tgl-track2');
-  if(other) other.classList.toggle('on',on); }
+/* Opening the camera view is NOT "start tracking". It used to call
+   /face_tracking?value=true, which put the tracker straight into follow-the-
+   nearest-face — so the moment you opened the panel the head began chasing
+   whoever the detector saw. With the camera on the head that reads as the
+   robot latching onto strangers and furniture. Opening the view now shows the
+   picture and nothing else; tapping a face is what starts the following. */
+function tglTrack(el,mirror){ const on=flip(el);
+  if(on){ openTracker(); } else { stopTracking(); }
+  $('#tgl-track').classList.toggle('on',on);
+  $('#tgl-track2').classList.toggle('on',on); }
 function tglChat(el){ api('/online_chat?enabled='+flip(el)); }
 
 /* ═════════ action (arms) ═════════ */
 let hand='left';
+const jointVals={left:{},right:{}};          // remembered positions per hand
+ALL_PARTS.forEach(p=>{ jointVals.left[p]=homeOf(p); jointVals.right[p]=homeOf(p); });
+
+function loadHandSliders(){
+  const src=(hand==='right')?jointVals.right:jointVals.left;  // 'both' shows left
+  document.querySelectorAll('#action-sliders input,#finger-sliders input').forEach(r=>{
+    const v=src[r.dataset.part];
+    if(v!=null){ r.value=v; paint(r); }
+  });
+}
 document.querySelectorAll('#hand-seg button').forEach(b=>b.addEventListener('click',()=>{
   hand=b.dataset.hand; api('/hand?value='+hand);
   document.querySelectorAll('#hand-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  loadHandSliders();                          // show THIS hand's positions
 }));
+function goHome(){
+  // Sliders move to each joint's OWN home, not a shared 1000.
+  //
+  // Note this sends /home and NOTHING else. The phone app sends HOME and then
+  // a POS: for every joint at once; the server handles them on concurrent
+  // threads, so the order reaching the ESP32 is arbitrary and whichever
+  // arrives last wins. Captured on the robot, HOME landed mid-burst and one
+  // joint ended at 1000 while the rest homed — and which joint lost changed
+  // every press. The robot homes itself from the firmware's table, so there
+  // is nothing for the display to send.
+  api('/home');
+  document.querySelectorAll('#action-sliders input,#finger-sliders input')
+    .forEach(r=>{
+      const h = homeOf(r.dataset.part);
+      r.value = h; paint(r);
+      const o = r.closest('.slider-pill')?.querySelector('output');
+      if(o) o.textContent = h;
+    });
+  // The two all-fingers sliders are not in #action-sliders or
+  // #finger-sliders, so the loop above misses them — they would sit at their
+  // old value while the hand went home, which is the kind of mismatch that
+  // makes an operator distrust the whole panel.
+  ['#fingers-all','#fingers-master'].forEach(sel=>{
+    const el=$(sel);
+    if(el){
+      el.value=homeOf('thumb'); paint(el);
+      const o=el.closest('.slider-pill')?.querySelector('output');
+      if(o) o.textContent=el.value;
+    }
+  });
+  ['left','right'].forEach(hh=>{
+    ALL_PARTS.forEach(p=>{ jointVals[hh][p]=homeOf(p); Bot.setJoint(p,homeOf(p),hh); });
+  });
+  toast('Home position');
+}
+
 function sendPos(part,val){
   if(hand==='both'){ api(`/position?part=${part}&value=${val}&hand=left`);
                      api(`/position?part=${part}&value=${val}&hand=right`); }
   else api(`/position?part=${part}&value=${val}&hand=${hand}`);
 }
-function makeJoint(part,min,max,def,label){
+function makeJoint(part){
+  const j=JOINTS[part];
   const row=document.createElement('div'); row.className='slider-pill';
-  row.innerHTML=`<label>${label}</label>
-    <input type="range" min="${min}" max="${max}" value="${def}" data-part="${part}">
-    <output>${def}</output>`;
-  const r=row.querySelector('input'); paint(r);
+  row.innerHTML=`<label>${j.label}</label>
+    <input type="range" min="${j.min}" max="${j.max}" value="${j.home}" data-part="${part}">
+    <output>${j.home}</output>`;
+  const r=row.querySelector('input'), out=row.querySelector('output');
+  paint(r);
   r.addEventListener('input',()=>{ paint(r);
-    Bot.setJoint(part,+r.value,hand);
-    thr('sv-'+part,()=>sendPos(part,r.value)); });
+    const v=+r.value;
+    out.textContent=v;
+    if(hand==='both'){ jointVals.left[part]=v; jointVals.right[part]=v; }
+    else jointVals[hand][part]=v;
+    Bot.setJoint(part,v,hand);
+    // Scaled on the way out; the label keeps showing what the user set.
+    thr('sv-'+part,()=>sendPos(part,Math.round(v*j.scale))); });
   return row;
 }
-HAND_PARTS.forEach(p=>$('#action-sliders').appendChild(
-  makeJoint(p,SERVO_MIN,SERVO_MAX,SERVO_DEF,p[0].toUpperCase()+p.slice(1))));
-FINGER_PARTS.forEach(p=>$('#finger-sliders').appendChild(
-  makeJoint(p,FINGER_MIN,FINGER_MAX,FINGER_DEF,p[0].toUpperCase()+p.slice(1))));
+HAND_PARTS.forEach(p=>$('#action-sliders').appendChild(makeJoint(p)));
+// Body servos are single, not per-arm, but they belong with the joints —
+// putting them on another page would mean changing tabs mid-pose.
+{
+  const sep=document.createElement('div');
+  sep.className='seg-label';
+  sep.textContent='BODY & HEAD';
+  $('#action-sliders').appendChild(sep);
+}
+BODY_PARTS.forEach(p=>$('#action-sliders').appendChild(makeJoint(p)));
+FINGER_PARTS.forEach(p=>$('#finger-sliders').appendChild(makeJoint(p)));
+
+/* ── all-fingers control ────────────────────────────────────────────────
+   Sends ONE command — POS:fingers:<v>:<hand> — rather than five separate
+   ones. The firmware's "fingers" branch drives all five channels itself, so
+   one line does the work of five, and the ESP32 reads a line at a time into a
+   96-byte buffer: a burst of five commands per slider movement can overrun it
+   and lose some of them.
+
+   Both sliders show 0-100 as specified and send x20, because the firmware
+   maps every POS: value over 0-2000. Unscaled, a slider at 100 would reach
+   5% of the finger's travel. */
+function setAllFingers(v, fromEl){
+  v = Math.max(0, Math.min(100, Math.round(+v)));
+
+  // Keep the two master sliders and the five individual ones in step, so no
+  // control ever displays a value that contradicts the hand.
+  ['#fingers-all','#fingers-master'].forEach(sel=>{
+    const el=$(sel);
+    if(el && el!==fromEl){
+      el.value=v; paint(el);
+      const o=el.closest('.slider-pill')?.querySelector('output');
+      if(o) o.textContent=v;
+    }
+  });
+  document.querySelectorAll('#finger-sliders input').forEach(r=>{
+    r.value=v; paint(r);
+    const o=r.closest('.slider-pill')?.querySelector('output');
+    if(o) o.textContent=v;
+    const p=r.dataset.part;
+    if(p){ jointVals.left[p]=v; jointVals.right[p]=v; Bot.setJoint(p,v,hand); }
+  });
+
+  const scaled = v * 20;                     // 0-100 shown -> 0-2000 sent
+  thr('fingers-all', ()=>sendPos('fingers', scaled));
+}
+
+['#fingers-all','#fingers-master'].forEach(sel=>{
+  const el=$(sel);
+  if(!el) return;
+  paint(el);
+  el.addEventListener('input', function(){
+    const o=this.closest('.slider-pill')?.querySelector('output');
+    if(o) o.textContent=this.value;
+    paint(this);
+    setAllFingers(this.value, this);
+  });
+});
 
 function sendFingersJson(){
   const j={};
-  document.querySelectorAll('#finger-sliders input').forEach(r=>j[r.dataset.part]=+r.value);
+  // Scaled, same reason as makeJoint: the firmware maps 0-2000.
+  document.querySelectorAll('#finger-sliders input').forEach(r=>{
+    const sc=(JOINTS[r.dataset.part]||{scale:1}).scale;
+    j[r.dataset.part]=Math.round(+r.value*sc);
+  });
   const enc=encodeURIComponent(JSON.stringify(j));
   if(hand==='both'){ api(`/position?value=${enc}&hand=left`); api(`/position?value=${enc}&hand=right`); }
   else api(`/position?value=${enc}&hand=${hand}`);
@@ -1269,9 +1220,15 @@ function toggleLoopRun(btn){
   toast(looping?'Loop running':'Loop stopped');
 }
 function savePose(){
-  const q=['hand='+(hand==='both'?'left':hand)];
+  const q=['hand='+(hand==='both'?'left':hand),'pos='+Date.now()];
   document.querySelectorAll('#action-sliders input,#finger-sliders input')
-    .forEach(r=>q.push(`${r.dataset.part}=${r.value}`));
+    .forEach(r=>{
+      // Saved SCALED, because the sequencer replays these values straight to
+      // the ESP32. Saving the raw slider number would replay a finger at 5%
+      // of the position it was set to.
+      const sc=(JOINTS[r.dataset.part]||{scale:1}).scale;
+      q.push(`${r.dataset.part}=${Math.round(+r.value*sc)}`);
+    });
   api('/save_pose?'+q.join('&')); toast('Pose saved to loop');
 }
 
@@ -1286,34 +1243,15 @@ function saveAudio(){
   toast(body.welcomeSpeech?'Saved — Luna will speak it now':'Saved');
 }
 /* Q&A rows */
-/* Inline SVG icons. Kept as constants so a row builder reads as markup rather
-   than a wall of paths, and so every dustbin in the UI is literally the same
-   glyph. */
-const TRASH_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M4 7h16"/><path d="M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1z"/>
-  <path d="M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7"/>
-  <path d="M10 11v6M14 11v6"/></svg>`;
-const CAMERA_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M4 8.5h2.2l1.3-2h9l1.3 2H20a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 20 19.5H4A1.5 1.5 0 0 1 2.5 18v-8A1.5 1.5 0 0 1 4 8.5z"/>
-  <circle cx="12" cy="14" r="3.4"/></svg>`;
-const UPLOAD_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M12 16V4M7.5 8.5L12 4l4.5 4.5"/>
-  <path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/></svg>`;
-const FACE_PLACEHOLDER_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
-  <circle cx="12" cy="9.6" r="3.4"/><path d="M5.6 20a6.4 6.4 0 0 1 12.8 0"/></svg>`;
-
 let qaNext=1; const qaRemoved=new Set();
 function addQaRow(q='',a='',id){
   const rid=id||qaNext++;
   qaNext=Math.max(qaNext,rid+1);
   const row=document.createElement('div'); row.className='qa-row'; row.dataset.id=rid;
-  // A real dustbin, not the 🗑 emoji: the emoji renders differently on every
-  // platform, cannot be recoloured, and at 40px on a touch panel it looked
-  // like a placeholder rather than a control.
   row.innerHTML=`<span class="num">${$('#qa-rows').children.length+1}</span>
     <input class="field" placeholder="Type here..." value="">
     <input class="field" placeholder="Type here..." value="">
-    <button class="delbtn" aria-label="Delete this answer">${TRASH_SVG}</button>`;
+    <button class="delbtn">🗑</button>`;
   const [qi,ai]=row.querySelectorAll('input'); qi.value=q; ai.value=a;
   row.querySelector('.delbtn').onclick=()=>{ qaRemoved.add(rid); row.remove(); renumber('#qa-rows'); };
   $('#qa-rows').appendChild(row);
@@ -1340,63 +1278,20 @@ function addFaceRow(id){
   const rid=id||faceNext++;
   faceNext=Math.max(faceNext,rid+1);
   const row=document.createElement('div'); row.className='face-row'; row.dataset.id=rid;
-  // Two ways to give Luna a face. Capturing from her OWN camera is the better
-  // one and is listed first: it records the face through the same lens, at the
-  // same angle and lighting the recogniser will meet it in, which matters more
-  // for accuracy than photo quality does.
-  row.innerHTML=`<div class="facecell">
-      <div class="thumbbox" aria-hidden="true">${FACE_PLACEHOLDER_SVG}</div>
-      <div class="facebtns">
-        <button class="capbtn" aria-label="Take photo with Luna's camera">${CAMERA_SVG}<span>Capture</span></button>
-        <label class="upbtn" aria-label="Choose a photo file">${UPLOAD_SVG}<span>Upload</span>
-          <input type="file" accept="image/*" hidden></label>
-      </div>
-    </div>
-    <input class="field" placeholder="What Luna says to them">
-    <button class="delbtn" aria-label="Remove this person">${TRASH_SVG}</button>`;
-
-  const fileIn = row.querySelector('input[type=file]');
-  const upbtn  = row.querySelector('.upbtn');
-  const capbtn = row.querySelector('.capbtn');
-  const thumb  = row.querySelector('.thumbbox');
-
-  function setFace(dataUrl){
-    row.dataset.face = dataUrl;
-    thumb.innerHTML = '';
-    const img = document.createElement('img');
-    img.src = dataUrl; img.alt = '';
-    thumb.appendChild(img);
-    thumb.classList.add('has');
-  }
-
+  row.innerHTML=`<label class="upbtn">⇪ Upload Face ${$('#face-rows').children.length+1}
+      <input type="file" accept="image/*" hidden></label>
+    <button class="capbtn" title="Take photo">📷</button>
+    <input class="field" placeholder="Type here...">
+    <button class="delbtn">🗑</button>`;
+  const fileIn=row.querySelector('input[type=file]'), upbtn=row.querySelector('.upbtn');
   fileIn.addEventListener('change',()=>{
     const f=fileIn.files[0]; if(!f) return;
     const rd=new FileReader();
-    rd.onload=()=>{ setFace(rd.result); toast('Photo added'); };
+    rd.onload=()=>{ row.dataset.face=rd.result; upbtn.classList.add('done');
+      upbtn.firstChild.textContent='✓ Face ready '; };
     rd.readAsDataURL(f);
   });
-
-  capbtn.addEventListener('click', async ()=>{
-    if(capbtn.classList.contains('busy')) return;   // 1.5s warm-up: no double taps
-    capbtn.classList.add('busy');
-    thumb.classList.add('shooting');
-    try{
-      const r=await fetch(API+'/display/cam_snap?t='+Date.now());
-      if(!r.ok){
-        let msg='Camera unavailable';
-        try{ const j=await r.json(); if(j.message) msg=j.message; }catch{}
-        toast(msg); return;
-      }
-      const blob=await r.blob();
-      const rd=new FileReader();
-      // Read as a data URL, not an object URL: saveFaces() sends the base64
-      // string to the robot, and an object URL would only be a local handle.
-      rd.onload=()=>{ setFace(rd.result); toast('Photo taken'); };
-      rd.readAsDataURL(blob);
-    }catch{ toast('Camera unavailable — check the connection'); }
-    finally{ capbtn.classList.remove('busy'); thumb.classList.remove('shooting'); }
-  });
-
+  row.querySelector('.capbtn').onclick=()=>openCapture(row);
   row.querySelector('.delbtn').onclick=()=>{ faceRemoved.add(rid); row.remove(); };
   $('#face-rows').appendChild(row);
 }
@@ -1415,32 +1310,85 @@ function saveFaces(){
 }
 addFaceRow(); addFaceRow(); addFaceRow();
 
+/* ═════════ video trigger editing ═════════ */
+let trigName='';
+function openTrigger(name,current){
+  trigName=name;
+  $('#trig-input').value=current||'';
+  openModal('trig-modal');
+}
+function saveTrigger(){
+  const t=$('#trig-input').value.trim();
+  api('/display/video_trigger?name='+encodeURIComponent(trigName)
+      +'&trigger='+encodeURIComponent(t));
+  closeModal('trig-modal');
+  toast(t?('Trigger set: '+t):'Trigger cleared');
+  setTimeout(loadVideos,300);
+}
+
+/* ═════════ Vision AI camera capture ═════════ */
+let capRow=null, capBlob=null;
+function openCapture(row){
+  capRow=row;
+  $('#cap-view').classList.add('open');
+  capShoot();
+}
+async function capShoot(){
+  const img=$('#cap-img');
+  img.src='';
+  try{
+    const r=await fetch(API+'/display/cam_snap?t='+Date.now());
+    if(!r.ok) throw 0;
+    capBlob=await r.blob();
+    img.src=URL.createObjectURL(capBlob);
+  }catch{ toast('Camera unavailable'); closeCapture(); }
+}
+function capUse(){
+  if(!capRow||!capBlob){ closeCapture(); return; }
+  const rd=new FileReader();
+  rd.onload=()=>{
+    capRow.dataset.face=rd.result;
+    const up=capRow.querySelector('.upbtn');
+    up.classList.add('done');
+    up.firstChild.textContent='✓ Photo ready ';
+    closeCapture();
+    toast('Photo captured');
+  };
+  rd.readAsDataURL(capBlob);
+}
+function closeCapture(){
+  $('#cap-view').classList.remove('open');
+  const img=$('#cap-img');
+  if(img.src) URL.revokeObjectURL(img.src);
+  img.removeAttribute('src');
+  capRow=null; capBlob=null;
+}
+
 /* ═════════ status / clock / settings load ═════════ */
 async function poll(){
   try{
     const r=await fetch(API+'/status'); const s=await r.json();
-    const p = s.battery ?? null;
-    $('#batt-pct').textContent = (p===null?'--':p)+'%';
-    // CSS width — the battery is a div now, and setAttribute('width') on a div
-    // silently does nothing.
-    $('#batt-fill').style.width = Math.max(2, p ?? 0)+'%';
-    const b=$('#batt');
-    b.classList.toggle('low',  p!==null && p<=25 && p>12);
-    b.classList.toggle('crit', p!==null && p<=12);
-    const mic=$('#chip-mic');
-    if(mic){
-      const busy = $('#face-stage').classList.contains('speaking');
-      mic.classList.remove('bad');
-      mic.classList.toggle('live', !busy);
-      mic.lastElementChild.textContent = busy ? 'Speaking' : 'Listening';
-    }
-  }catch{
-    const mic=$('#chip-mic');
-    if(mic){ mic.classList.remove('live'); mic.classList.add('bad');
-             mic.lastElementChild.textContent='No link'; }
-  }
+    const pct=Math.max(0,Math.min(100,s.battery??100));
+    $('#batt-pct').textContent=pct+'%';
+    const LOW=20, CRITICAL=10;
+    const fill=$('#batt-fill');
+    fill.setAttribute('width',Math.max(1,16*pct/100));
+    fill.setAttribute('fill',
+      pct<=CRITICAL?'#dc2626':pct<=LOW?'#f59e0b':'#4ade80');
+    const al=$('#batt-alert');
+    al.style.display=pct<=LOW?'block':'none';
+    al.textContent=pct<=CRITICAL
+      ?'🔴 Critical Battery — charge immediately!'
+      :'⚠️ Low Battery — please charge the robot';
+    // mirror the real robot's eye color + drive state on the 3D model
+    const eye=s.eyes||s.eye||s.eye_color||(s.current_state&&s.current_state.eyes);
+    if(eye) Bot.setEyeColor(eye);
+    const dir=s.direction||(s.current_state&&s.current_state.direction);
+    if(dir) Bot.setDrive(dir);
+  }catch{}
 }
-setInterval(poll,5000); poll();
+setInterval(poll,5000);
+  pollMotion(); setInterval(pollMotion, 3000); poll();
 fetch(API+'/settings').then(r=>r.json()).then(s=>{
   if(s.volume!=null){ $('#vol').value=s.volume; paint($('#vol')); }
   if(s.chatgpt_enabled===false) $('#tgl-chat').classList.remove('on');
@@ -1450,45 +1398,377 @@ fetch(API+'/settings').then(r=>r.json()).then(s=>{
 
 /* ═════════ live speech (SSE) ═════════ */
 const cap=$('#caption'), stage=$('#face-stage'), log=$('#facelog');
-function setIdle(){
-  hudState('STANDBY');
-  stage.classList.remove('speaking');
-  Bot.speaking=false;
-  cap.classList.add('idle');
-  cap.textContent='Listening';
+
+/* ══════════════════════════════════════════════════════════════════════
+   LUNA'S VOICE — Siri-style liquid orb
+
+   TWO THINGS THE PREVIOUS VERSION GOT WRONG, both visible on the panel:
+
+     A HARD BLACK SQUARE the size of the canvas. It drew opaque blobs onto an
+     opaque BLACK offscreen and relied on 'lighter' to make the black drop
+     out. Additive blending should ignore black, but combined with a canvas
+     filter the result was composited as an opaque block. Nothing opaque is
+     drawn anywhere now, so there is no rectangle to leak.
+
+     A WHITE BLOWN-OUT CENTRE with colour surviving only at the rim. Colour
+     came from stacking coloured blobs additively, so wherever three or four
+     overlapped the channels all saturated and the middle went white. Siri's
+     orb has colour right through it.
+
+   HOW IT WORKS NOW — shape and colour are separate
+
+     1. SHAPE. Soft white blobs are drawn additively onto a TRANSPARENT
+        offscreen, building up an alpha field. That field is then pushed
+        through blur + contrast, which is what fuses overlapping blobs into
+        one body with a taut, living edge (the metaball threshold). Because
+        the canvas is transparent, transparent stays transparent.
+
+     2. COLOUR. A single linear gradient sweeping the full palette is painted
+        over that shape with 'source-in', so it is clipped to the body. One
+        gradient across the whole mass, so the colour reads as a continuous
+        sweep rather than as lumps, and it cannot saturate to white.
+
+     The gradient also rotates slowly, so the hues drift across the body — the
+     thing that makes Siri's orb feel liquid rather than like a coloured shape.
+
+   OURS, NOT A COPY
+     Siri's exact sequence is blue-purple-pink. This keeps that cool sweep but
+     ends on Luna's amber, so the orb resolves into her colour. Same family,
+     recognisably hers.
+   ══════════════════════════════════════════════════════════════════════ */
+let auraMode='idle';   // idle | listening | thinking | speaking | wake
+
+const ORB_STATE = {
+  //            speed  spread  glow  tension  swirl
+  idle:      { s:0.26, r:0.20, g:0.82, c:1.00, w:0.10 },
+  listening: { s:0.60, r:0.28, g:1.00, c:1.02, w:0.22 },
+  thinking:  { s:1.70, r:0.24, g:1.08, c:1.12, w:0.60 },
+  speaking:  { s:1.15, r:0.36, g:1.25, c:0.94, w:0.34 },
+  wake:      { s:1.45, r:0.32, g:1.40, c:1.00, w:0.44 },
+};
+
+(function orbEngine(){
+  const cv=$('#hero-canvas'); if(!cv) return;
+  const ctx=cv.getContext('2d');
+  const W=cv.width, H=cv.height;
+
+  // Offscreen at a fraction of the size. Blur cost scales with area and the
+  // result is soft by definition, so full resolution buys nothing.
+  const S=300;
+  const off=document.createElement('canvas'); off.width=off.height=S;
+  const octx=off.getContext('2d');
+
+  /* Siri's cool sweep, resolving into Luna's amber. Adjacent stops must be
+     adjacent in hue or the blend between them crosses the middle of the wheel
+     and greys out — which is what makes a multicolour orb look muddy. */
+  let STOPS=[
+    [ 96,150,255],   // blue
+    [140,112,255],   // indigo
+    [178, 96,246],   // violet
+    [236, 84,190],   // magenta
+    [255,120,140],   // coral
+    [255,168,40],    // Luna's amber
+  ];
+  const EYE={siri:[140,112,255], blue:[96,150,255],  violet:[178,96,246],
+             magenta:[236,84,190], pink:[255,120,170], amber:[255,168,40],
+             gold:[255,205,80],   green:[46,232,124], red:[255,90,110],
+             white:[255,252,246], cyan:[95,212,208]};
+  window.__hero={ setColor(c){
+    let v=EYE[(c||'').toLowerCase()];
+    if(!v && /^#?[0-9a-f]{6}$/i.test(c||'')){ const h=c.replace('#','');
+      v=[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+    if(!v) return;
+    // Neighbours by rotating the HUE, not by lightening. Tints of one colour
+    // give a flat mass; neighbouring hues keep the depth the effect needs.
+    const rot=(rgb,deg)=>{
+      const [r,g,b]=rgb.map(x=>x/255);
+      const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
+      let h=0;
+      if(d){ h = mx===r ? ((g-b)/d)%6 : mx===g ? (b-r)/d+2 : (r-g)/d+4; }
+      h=(h*60+deg+360)%360;
+      const s=mx===0?0:d/mx, vv=mx;
+      const cc=vv*s, x=cc*(1-Math.abs((h/60)%2-1)), m=vv-cc;
+      const t=h<60?[cc,x,0]:h<120?[x,cc,0]:h<180?[0,cc,x]:
+              h<240?[0,x,cc]:h<300?[x,0,cc]:[cc,0,x];
+      return t.map(q=>Math.round((q+m)*255));
+    };
+    STOPS=[rot(v,-50),rot(v,-30),rot(v,-12),v,rot(v,14),rot(v,34)];
+  }};
+
+  /* Blobs. Each on its own slow ellipse at an unrelated rate, so the
+     silhouette never visibly repeats — a shared period is what makes this kind
+     of animation read as a loop. The first barely moves and is the largest: it
+     anchors the body so the others cannot pull it apart. */
+  const BLOBS=[
+    {ax:0.05, ay:0.04, fx:0.17, fy:0.13, ph:2.4, r:0.40},
+    {ax:0.22, ay:0.17, fx:0.31, fy:0.23, ph:0.0, r:0.30},
+    {ax:0.18, ay:0.23, fx:0.19, fy:0.37, ph:1.7, r:0.27},
+    {ax:0.24, ay:0.14, fx:0.43, fy:0.17, ph:3.1, r:0.24},
+    {ax:0.14, ay:0.20, fx:0.27, fy:0.49, ph:4.6, r:0.21},
+  ];
+
+  let t=0, last=0, spd=0.26, spread=0.20, glow=0.82, tension=1.00, swirl=0.10;
+
+  function draw(ts){
+    requestAnimationFrame(draw);
+    const page=document.getElementById('page-luna');
+    if(!page || !page.classList.contains('active') || document.hidden) return;
+    if(ts-last < 33) return;                     // ~30fps
+    const dt=Math.min((ts-last)/1000, 0.1);
+    last=ts;
+
+    const st=ORB_STATE[auraMode]||ORB_STATE.idle;
+    const k=Math.min(dt*3.0,1);
+    spd     += (st.s-spd)*k;
+    spread  += (st.r-spread)*k;
+    glow    += (st.g-glow)*k;
+    tension += (st.c-tension)*k;
+    swirl   += (st.w-swirl)*k;
+    t += dt*spd;
+
+    /* ── 1. SHAPE: white blobs on TRANSPARENT, building an alpha field ── */
+    octx.setTransform(1,0,0,1,0,0);
+    octx.clearRect(0,0,S,S);
+    octx.globalCompositeOperation='lighter';
+    const cx=S/2, cy=S/2;
+    for(let i=0;i<BLOBS.length;i++){
+      const b=BLOBS[i];
+      const x=cx + Math.sin(t*b.fx*6.283 + b.ph)*S*b.ax*spread*2.4;
+      const y=cy + Math.cos(t*b.fy*6.283 + b.ph*1.3)*S*b.ay*spread*2.4;
+      // Each blob breathes, so the body's mass shifts as well as its outline.
+      const rr=S*b.r*(0.86+0.22*Math.sin(t*1.8+b.ph));
+      const g=octx.createRadialGradient(x,y,0,x,y,rr);
+      g.addColorStop(0,   'rgba(255,255,255,0.95)');
+      g.addColorStop(0.50,'rgba(255,255,255,0.42)');
+      g.addColorStop(1,   'rgba(255,255,255,0)');
+      octx.fillStyle=g;
+      octx.beginPath(); octx.arc(x,y,rr,0,7); octx.fill();
+    }
+
+    /* ── 2. THRESHOLD: blur then contrast, in place, to fuse the blobs into
+           one body with a taut edge. Transparent stays transparent, so there
+           is no rectangle. ── */
+    octx.globalCompositeOperation='copy';
+    octx.filter=`blur(${Math.round(S*0.055)}px) contrast(${(7.5*tension).toFixed(1)})`;
+    octx.drawImage(off,0,0);
+    octx.filter='none';
+
+    /* ── 3. COLOUR: one gradient sweeping the palette, clipped to the shape.
+           'source-in' keeps only where the shape already is, so the colour
+           cannot spill and cannot saturate to white the way stacked coloured
+           blobs did. ── */
+    octx.globalCompositeOperation='source-in';
+    const ang=t*swirl*1.4;                       // the sweep rotates slowly
+    const gx=Math.cos(ang)*S*0.62, gy=Math.sin(ang)*S*0.62;
+    const lg=octx.createLinearGradient(cx-gx,cy-gy,cx+gx,cy+gy);
+    for(let i=0;i<STOPS.length;i++){
+      const c=STOPS[i];
+      lg.addColorStop(i/(STOPS.length-1), `rgb(${c[0]},${c[1]},${c[2]})`);
+    }
+    octx.fillStyle=lg;
+    octx.fillRect(0,0,S,S);
+    octx.globalCompositeOperation='source-over';
+
+    /* ── 4. to the panel ── */
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation='source-over';
+
+    // Halo: the same shape, soft and dim, so the orb sits in its own light
+    // instead of looking cut out.
+    ctx.filter=`blur(${Math.round(W*0.05)}px) saturate(165%)`;
+    ctx.globalAlpha=0.42*glow;
+    ctx.drawImage(off, W*0.05, H*0.05, W*0.90, H*0.90);
+
+    // The body. A little blur keeps the edge soft rather than cut.
+    ctx.filter=`blur(${Math.round(W*0.008)}px) saturate(150%) brightness(${(0.98*glow).toFixed(2)})`;
+    ctx.globalAlpha=1;
+    ctx.drawImage(off, 0, 0, W, H);
+
+    // A gentle inner sheen, offset up-left, so the body reads as rounded.
+    // Deliberately weak: the previous version's bright core is what bleached
+    // the middle to white.
+    ctx.filter='none';
+    ctx.globalCompositeOperation='lighter';
+    const sx=W*0.42, sy=H*0.38;
+    const sg=ctx.createRadialGradient(sx,sy,0,sx,sy,W*0.26);
+    sg.addColorStop(0,`rgba(255,255,255,${0.10*glow})`);
+    sg.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=sg;
+    ctx.beginPath(); ctx.arc(sx,sy,W*0.26,0,7); ctx.fill();
+
+    ctx.globalCompositeOperation='source-over';
+    ctx.filter='none';
+    ctx.globalAlpha=1;
+  }
+  requestAnimationFrame(draw);
+})();
+
+function setIdle(){ stage.classList.remove('speaking'); Bot.speaking=false;
+  auraMode='idle';                       // was 'listening' — the orb sat at
+  cap.classList.add('idle');             // listening amplitude permanently,
+  cap.textContent='Listening…'; }        // so it never looked at rest
+
+/* One place that maps a voice-loop state onto the orb, so the animation, the
+   caption and the state word can never disagree.
+
+   The voice loop emits: wake, listening, followup, thinking, speaking, idle.
+   Before this, only speech_start and speech_end reached the display, so the
+   orb looked idle for the two seconds a network answer takes — which reads as
+   the robot having missed the question. */
+const VOICE_ORB = {
+  wake:      { orb:'wake',      caption:'Yes?' },
+  listening: { orb:'listening', caption:'Listening…' },
+  followup:  { orb:'listening', caption:'Anything else?' },
+  thinking:  { orb:'thinking',  caption:'Thinking…' },
+  speaking:  { orb:'speaking',  caption:null },
+  idle:      { orb:'idle',      caption:'Listening…' },
+};
+function setVoiceState(name){
+  const st = VOICE_ORB[name] || VOICE_ORB.idle;
+  auraMode = st.orb;
+  stage.classList.toggle('speaking', name==='speaking');
+  Bot.speaking = (name==='speaking');
+  // caption null: speech_start is about to write the real sentence, and
+  // overwriting it here would flash placeholder text first.
+  if(st.caption!==null){
+    cap.textContent = st.caption;
+    cap.classList.toggle('idle', name==='idle'||name==='listening'||name==='followup');
+  }
 }
-// The transcript is the hero now, so it keeps a real history rather than the
-// 3 lines that fitted beside the old 3D model. Newest at the BOTTOM, the way
-// a conversation reads, and it auto-scrolls only when already at the bottom so
-// scrolling back through what was said does not get yanked away.
-function addLog(text, who){
-  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+function addLog(text,who){
   const t=new Date().toTimeString().slice(0,5);
-  const div=document.createElement('div');
-  div.className='line '+(who==='luna'?'from-luna':'from-you');
-  div.innerHTML=`<b class="mono"></b><i></i><span></span>`;
-  div.querySelector('b').textContent=t;
-  div.querySelector('i').textContent=(who==='luna'?'LUNA':'YOU');
-  div.querySelector('span').textContent=text;
-  log.appendChild(div);
-  while(log.children.length>40) log.firstChild.remove();
-  if(atBottom) log.scrollTop=log.scrollHeight;
+  const div=document.createElement('div'); div.className='line';
+  div.innerHTML=`<b class="mono">${t}</b><b class="${who==='you'?'you':''}"></b><span></span>`;
+  const [,label,body]=div.children;
+  label.textContent=who==='you'?'You':'Luna';
+  if(who==='you') label.style.color='var(--cyan, #5FD4D0)';
+  body.textContent=text;
+  log.prepend(div);
+  while(log.children.length>4) log.lastChild.remove();
 }
+/* ── Luna's POV panel ──────────────────────────────────────────────────
+   Shown on vision_start, hidden on vision_end. The <img> src is only set
+   while visible: an MJPEG stream left connected keeps the tracker's camera
+   awake indefinitely, and the tracker is written to release the device when
+   nobody is asking for frames. */
+let povTimer=null;
+function povShow(label){
+  const p=$('#pov'), img=$('#pov-img');
+  $('#pov-label').textContent=label||'Looking…';
+  if(!img.src || img.src==='about:blank' || !p.classList.contains('show')){
+    img.src='/display/camera?t='+Date.now();
+  }
+  p.classList.add('show');
+  clearTimeout(povTimer);
+  // Safety net: if vision_end never arrives — a crash mid-search, say — the
+  // panel must not sit there forever holding the camera open.
+  povTimer=setTimeout(povHide, 45000);
+}
+function povHide(){
+  clearTimeout(povTimer); povTimer=null;
+  const p=$('#pov'), img=$('#pov-img');
+  p.classList.remove('show');
+  // Drop the stream after the fade, so the connection actually closes.
+  setTimeout(()=>{ if(!p.classList.contains('show')) img.src='about:blank'; }, 400);
+}
+
+/* ── body motion: head to voice, hands while speaking ─────────────────
+   One control over two independent features. The pill shows the combined
+   state and toggles both; the panel switches them separately. */
+let motionState = {head: true, hands: true};
+
+function motionExpand(){
+  $('#motion-ctl').classList.toggle('open');
+}
+
+function motionPaint(){
+  const both = motionState.head && motionState.hands;
+  const some = motionState.head || motionState.hands;
+  const m = $('#motion-main');
+  m.classList.toggle('on', both);
+  // A third state, because "on" when only the head is enabled would be a
+  // lie — and this is a control people will trust to mean the arms are still.
+  m.classList.toggle('part', some && !both);
+  $('#motion-label').textContent =
+    both ? 'Motion on' : !some ? 'Motion off' :
+    motionState.head ? 'Head only' : 'Hands only';
+  $('#tgl-head-motion').classList.toggle('on', motionState.head);
+  $('#tgl-hand-motion').classList.toggle('on', motionState.hands);
+}
+
+async function motionPush(note){
+  try{
+    const r = await api(`/motion/enable?head=${motionState.head}`
+                      + `&hands=${motionState.hands}`);
+    const d = await r.json();
+    // Believe the robot, not what we asked for. Showing the requested state
+    // is how somebody ends up certain the arms are off when they are not.
+    if(typeof d.head  === 'boolean') motionState.head  = d.head;
+    if(typeof d.hands === 'boolean') motionState.hands = d.hands;
+    motionPaint();
+    if(note) toast(note);
+  }catch(e){
+    toast('Could not reach the robot');
+    pollMotion();
+  }
+}
+
+function motionToggleAll(){
+  const on = !(motionState.head && motionState.hands);
+  motionState.head = motionState.hands = on;
+  motionPaint();                       // instant, then corrected by the reply
+  motionPush(on ? 'Head and hands on' : 'Luna will keep still');
+}
+
+function motionSet(which, btn){
+  motionState[which] = !btn.classList.contains('on');
+  motionPaint();
+  motionPush(null);
+}
+
+async function pollMotion(){
+  try{
+    const d = await (await api('/motion/status')).json();
+    if(typeof d.head  === 'boolean') motionState.head  = d.head;
+    if(typeof d.hands === 'boolean') motionState.hands = d.hands;
+    motionPaint();
+    // The pulse means something is moving right now, so the pill reports
+    // what is happening rather than only what was asked for.
+    $('#motion-main').classList.toggle('live',
+      !!(d.gesturing || d.head_moving));
+    const n = $('#motion-note');
+    if(n) n.textContent =
+      d.user_active ? 'Paused — someone is posing an arm' :
+      (d.head && !d.doa_available) ? 'Head: microphone direction unavailable' :
+      '';
+  }catch(e){}
+}
+
 function connectSSE(){
   const es=new EventSource(API+'/display/events');
   es.onmessage=e=>{
     let d; try{ d=JSON.parse(e.data); }catch{ return; }
     if(d.type==='state'){ setVoiceState(d.text||'idle'); }
-    else if(d.type==='question'){ addLog(d.text||'', 'you'); }
+    else if(d.type==='user_said'||d.type==='question'){
+      if(d.text){ addLog(d.text,'you');
+        cap.classList.add('idle'); cap.textContent='“'+d.text+'”'; }
+    }
     else if(d.type==='speech_start'){
-      stage.classList.add('speaking'); Bot.speaking=true; hudState('SPEAKING');
+      setVoiceState('speaking');
       cap.classList.remove('idle');
-      cap.textContent=d.text||''; if(d.text) addLog(d.text, 'luna');
+      cap.textContent=d.text||''; if(d.text) addLog(d.text,'luna');
     }
     else if(d.type==='speech_end'){ setIdle(); }
     else if(d.type==='play_video'){ openPlayer(d.text); }
     else if(d.type==='play_youtube'){ openYouTube(d.id,d.text); }
     else if(d.type==='stop_video'){ closePlayer(); closeYouTube(); }
+    else if(d.type==='reminder'){ showReminder(d.text); addLog(d.text,'luna'); remPoll(); }
+    else if(d.type==='face_greet'){ showFaceCard(d.name,d.text);
+      addLog(d.text||('Hello '+(d.name||'there')),'luna'); }
+    else if(d.type==='face_tracking'){ syncTracking(d.text==='on'); }
+    else if(d.type==='vision_start'){ povShow(d.text||'Looking…'); }
+    else if(d.type==='vision_end'){ povHide(); }
     else if(d.type==='notice'){ toast(d.text||''); }
   };
   es.onerror=()=>{ es.close(); setTimeout(connectSSE,3000); };
@@ -1505,9 +1785,14 @@ async function loadVideos(){
     list.forEach(v=>{
       const card=document.createElement('div'); card.className='vcard';
       card.innerHTML=`<div class="vname"></div><div class="vmeta">${fmtSize(v.size)}</div>
+        <div class="vtrig"></div>
         <div class="vrow"><button class="pill-btn blue">Play</button>
         <button class="pill-btn outline red">Delete</button></div>`;
       card.querySelector('.vname').textContent=v.name;
+      const tr=card.querySelector('.vtrig');
+      tr.textContent=v.trigger?('🎯 '+v.trigger):'🎯 set trigger word';
+      tr.classList.toggle('unset',!v.trigger);
+      tr.onclick=()=>openTrigger(v.name,v.trigger||'');
       const [play,del]=card.querySelectorAll('button');
       play.onclick=()=>api('/display/play?name='+encodeURIComponent(v.name));
       del.onclick=()=>confirmAct('Delete this video?',v.name,
@@ -1519,12 +1804,14 @@ async function loadVideos(){
 $('#vfile').addEventListener('change',()=>{
   const f=$('#vfile').files[0]; if(!f) return;
   const fd=new FormData(); fd.append('video',f);
+  const tg=$('#vtrigger').value.trim();
+  if(tg) fd.append('trigger',tg);
   const xhr=new XMLHttpRequest();
   xhr.open('POST',API+'/display/upload_video');
   xhr.upload.onprogress=e=>{ if(e.lengthComputable)
     $('#upload-prog').textContent='Uploading '+Math.round(e.loaded/e.total*100)+'%'; };
   xhr.onload=()=>{ $('#upload-prog').textContent='';
-    if(xhr.status===200){ toast('Video uploaded'); loadVideos(); }
+    if(xhr.status===200){ toast('Video uploaded'); $('#vtrigger').value=''; loadVideos(); }
     else{ let m='Upload failed'; try{ m=JSON.parse(xhr.responseText).message||m; }catch{}
       toast(m); } };
   xhr.onerror=()=>{ $('#upload-prog').textContent=''; toast('Upload failed — check connection'); };
@@ -1556,16 +1843,36 @@ vid.addEventListener('ended',()=>{ if(!vid.loop) closePlayer(); });
 /* ═════════ online videos (YouTube) ═════════ */
 const fmtDur=s=>{ s=Math.round(+s||0);
   return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+/* Clear the search results and the box.
+   Deliberately does NOT stop a video that is already playing: somebody
+   tidying the list while something plays on the screen has not asked for it
+   to stop, and stopping it would be a surprise. Stop is its own control. */
+function clearSearch(){
+  $('#yt-results').innerHTML='';
+  $('#yt-query').value='';
+  ytShowClear(false);
+  $('#yt-query').focus();
+}
+
+function ytShowClear(on){
+  const b=$('#yt-clear');
+  if(b) b.style.display = on ? '' : 'none';
+}
+
 async function searchOnline(){
   const q=$('#yt-query').value.trim(); if(!q) return;
   const box=$('#yt-results');
-  box.innerHTML='<div style="color:var(--dim);padding:8px">Searching…</div>';
+  box.innerHTML='<div style="color:var(--muted);padding:8px">Searching…</div>';
+  // Shown as soon as searching starts, so a slow or failed search can still
+  // be cleared rather than leaving 'Searching…' on screen with no way out.
+  ytShowClear(true);
   try{
     const r=await fetch(API+'/display/search_online?query='+encodeURIComponent(q));
     const data=await r.json();
-    if(!r.ok){ box.innerHTML=''; toast(data.message||'Search failed'); return; }
+    if(!r.ok){ box.innerHTML=''; ytShowClear(false);
+               toast(data.message||'Search failed'); return; }
     box.innerHTML='';
-    if(!data.length){ box.innerHTML='<div style="color:var(--dim);padding:8px">No results</div>'; return; }
+    if(!data.length){ box.innerHTML='<div style="color:var(--muted);padding:8px">No results</div>'; return; }
     data.forEach(v=>{
       const c=document.createElement('div'); c.className='ytcard';
       c.innerHTML=`<img loading="lazy" src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" alt="">
@@ -1578,17 +1885,24 @@ async function searchOnline(){
         api('/display/play_online?id='+encodeURIComponent(v.id)+'&title='+encodeURIComponent(v.title));
       box.appendChild(c);
     });
-  }catch{ box.innerHTML=''; toast('Search failed — is Luna online?'); }
+  }catch{ box.innerHTML=''; ytShowClear(false);
+          toast('Search failed — is Luna online?'); }
 }
-$('#yt-query').addEventListener('keydown',e=>{ if(e.key==='Enter') searchOnline(); });
+$('#yt-query').addEventListener('keydown',e=>{
+  if(e.key==='Enter') searchOnline();
+  if(e.key==='Escape') clearSearch();
+});
 
 const ytOverlay=$('#yt-player'), ytFrame=$('#yt-frame');
 function openYouTube(id,title){
   if(!id) return;
   closePlayer();                       // never two players at once
   $('#yt-title').textContent=title||'';
-  ytFrame.src='https://www.youtube.com/embed/'+encodeURIComponent(id)
-    +'?autoplay=1&playsinline=1&rel=0';
+  // sandbox WITHOUT allow-top-navigation → the "Watch on YouTube" link
+  // inside the iframe cannot navigate the kiosk away. Playback still works.
+  ytFrame.setAttribute('sandbox','allow-scripts allow-same-origin allow-presentation');
+  ytFrame.src='https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id)
+    +'?autoplay=1&playsinline=1&rel=0&modestbranding=1';
   ytOverlay.classList.add('open');
 }
 function closeYouTube(){ ytOverlay.classList.remove('open');
@@ -1604,7 +1918,7 @@ function wsSkip(){ $('#wifi-setup').classList.remove('open'); }
 $('#btn-wifi').addEventListener('click',wsOpen);
 
 async function wsScan(){
-  wsNets.innerHTML='<div style="color:var(--dim);padding:8px">Scanning…</div>';
+  wsNets.innerHTML='<div style="color:var(--muted);padding:8px">Scanning…</div>';
   try{
     const r=await fetch(API+'/display/wifi_scan'); const list=await r.json();
     if(!r.ok) throw 0;
@@ -1637,10 +1951,23 @@ async function wsScan(){
     };
     wsNets.appendChild(other);
     if(!list.length) wsNets.insertAdjacentHTML('afterbegin',
-      '<div style="color:var(--dim);padding:8px">No networks found — try Rescan</div>');
+      '<div style="color:var(--muted);padding:8px">No networks found — try Rescan</div>');
   }catch{
-    wsNets.innerHTML='<div style="color:var(--dim);padding:8px">Scan failed — check nmcli / sudo permissions, or Continue offline</div>';
+    wsNets.innerHTML='<div style="color:var(--muted);padding:8px">Scan failed — check nmcli / sudo permissions, or Continue offline</div>';
   }
+}
+
+async function wsVerifyOnline(){
+  // the radio switch can kill the HTTP reply even when connecting worked —
+  // so check reality for up to ~24s before believing "failed"
+  for(let i=0;i<8;i++){
+    await new Promise(res=>setTimeout(res,3000));
+    try{
+      const d=await (await fetch(API+'/display/net_status')).json();
+      if(d.online) return d;
+    }catch{}
+  }
+  return null;
 }
 
 async function wsConnect(){
@@ -1657,19 +1984,26 @@ async function wsConnect(){
   if(!ssid){ wsStatus.textContent='Enter a network name'; wsStatus.className='err'; return; }
   wsStatus.textContent='Connecting to '+ssid+'…'; wsStatus.className='';
   $('#ws-connect').disabled=true;
+  let okNow=false, failMsg='Connection failed';
   try{
     const r=await fetch(API+'/display/wifi_connect?ssid='+encodeURIComponent(ssid)
         +'&password='+encodeURIComponent(pass));
     const d=await r.json();
-    if(r.ok){
-      wsStatus.textContent='Connected ✓'; wsStatus.className='ok';
-      $('#btn-wifi').classList.remove('off');
-      setTimeout(()=>{ wsSkip(); notice('Connected to '+ssid,
-        'Luna is online — videos and online answers are ready.'); },700);
-    }else{
-      wsStatus.textContent=d.message||'Connection failed'; wsStatus.className='err';
-    }
-  }catch{ wsStatus.textContent='Connection failed'; wsStatus.className='err'; }
+    okNow=r.ok;
+    if(!okNow) failMsg=d.message||failMsg;
+  }catch{ /* reply lost in the radio switch — verify below */ }
+  if(!okNow){
+    wsStatus.textContent='Checking connection…';
+    okNow=!!(await wsVerifyOnline());
+  }
+  if(okNow){
+    wsStatus.textContent='Connected ✓'; wsStatus.className='ok';
+    $('#btn-wifi').classList.remove('off'); wxFetch();
+    setTimeout(()=>{ wsSkip(); notice('Connected to '+ssid,
+      'Luna is online — videos and AI chat are ready.'); },700);
+  }else{
+    wsStatus.textContent=failMsg; wsStatus.className='err';
+  }
   $('#ws-connect').disabled=false;
 }
 
@@ -1715,30 +2049,289 @@ async function wsConnect(){
 })();
 
 /* boot check: online? skip setup. offline? show it */
+let wasOnline=null;
 async function netCheck(showIfOffline){
   try{
     const r=await fetch(API+'/display/net_status'); const d=await r.json();
     $('#btn-wifi').classList.toggle('off',!d.online);
-    $('#btn-wifi').classList.toggle('on',!!d.online);
-    const c=$('#chip-net');
-    if(c){
-      c.classList.toggle('live',!!d.online);
-      c.classList.toggle('warn',!d.online);
-      c.lastElementChild.textContent = d.online ? (d.ssid||'Online') : 'Offline';
-    }
     if(!d.online && showIfOffline) wsOpen();
+    if(d.online && wasOnline===false) wxFetch();   // internet came back → refresh weather
+    wasOnline=d.online;
     return d.online;
-  }catch{
-    $('#btn-wifi').classList.add('off');
-    const c=$('#chip-net');
-    if(c){ c.classList.remove('live'); c.classList.add('warn');
-           c.lastElementChild.textContent='Offline'; }
-    return false; }
+  }catch{ $('#btn-wifi').classList.add('off'); wasOnline=false; return false; }
 }
 netCheck(true);
 setInterval(()=>netCheck(false),30000);
-const Bot={ speaking:false, setJoint(){}, resize(){} };
 
+/* ═════════ idle screen: clock + date + weather ═════════ */
+const WX_EMOJI=c=>
+  c===0?['☀️','Clear']:c<=2?['⛅','Partly cloudy']:c===3?['☁️','Overcast']:
+  c<=48?['🌫️','Foggy']:c<=57?['🌦️','Drizzle']:c<=67?['🌧️','Rain']:
+  c<=77?['❄️','Snow']:c<=82?['🌧️','Showers']:['⛈️','Thunderstorm'];
+function tickClock(){
+  const d=new Date();
+  let h=d.getHours(); const ap=h>=12?'PM':'AM'; h=h%12||12;
+  $('#iw-clock').textContent=h+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap;
+  $('#iw-date').textContent=d.toLocaleDateString(undefined,
+    {weekday:'long', day:'numeric', month:'long'});
+}
+setInterval(tickClock,1000); tickClock();
+async function wxFetch(){
+  try{
+    const r=await fetch(API+'/display/weather');
+    if(!r.ok) throw 0;
+    const w=await r.json();
+    if(typeof w.temp!=='number' || w.code===undefined) throw 0;  // not real weather data
+    const [em,desc]=WX_EMOJI(w.code);
+    const el=$('#iw-wx');
+    el.innerHTML=`<span class="em">${em}</span>${w.temp}°C · ${desc}
+      <small>${w.city?w.city+' · ':''}humidity ${w.humidity}%</small>`;
+    el.style.display='block';
+  }catch{ $('#iw-wx').style.display='none'; }  // offline → clock only
+}
+wxFetch();
+setInterval(wxFetch,15*60*1000);
+
+/* ═════════ reminders ═════════ */
+function showReminder(text){
+  $('#rem-text').textContent=text||'';
+  $('#rem-banner').classList.add('show');
+  clearTimeout(timers._rem);
+  timers._rem=setTimeout(hideReminder,60000);   // auto-dismiss after 1 min
+}
+function hideReminder(){ $('#rem-banner').classList.remove('show'); }
+async function remPoll(){
+  try{
+    const r=await fetch(API+'/display/reminders'); const list=await r.json();
+    const el=$('#iw-rem');
+    if(!Array.isArray(list)||!list.length){ el.style.display='none'; return; }
+    const n=list[0], s=Math.max(0,n.in_s);
+    const when=s<60?'in under a minute':s<3600?('in '+Math.round(s/60)+' min')
+      :('at '+new Date(n.at*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}));
+    el.textContent='⏰ '+n.text+' · '+when
+      +(list.length>1?'  (+'+(list.length-1)+' more)':'');
+    el.style.display='block';
+  }catch{ $('#iw-rem').style.display='none'; }
+}
+remPoll();
+setInterval(remPoll,30000);
+
+/* ═════════ face greeting card ═════════ */
+function showFaceCard(name,greet){
+  name=name||'';
+  $('#fc-name').textContent=name||'Hello!';
+  $('#fc-greet').textContent=greet||'';
+  const img=$('#fc-photo'), ini=$('#fc-initial');
+  ini.textContent=(name[0]||'?').toUpperCase();
+  img.style.display='block'; ini.style.display='none';
+  img.onerror=()=>{ img.style.display='none'; ini.style.display='flex'; };
+  img.src=API+'/display/face_photo?name='+encodeURIComponent(name)+'&t='+Date.now();
+  $('#face-card').classList.add('show');
+  clearTimeout(timers._face);
+  timers._face=setTimeout(hideFaceCard,12000);
+}
+function hideFaceCard(){ $('#face-card').classList.remove('show'); }
+
+/* ═════════ face tracking overlay ═════════ */
+const tvImg=$('#tv-img'), tvBoxes=$('#tv-boxes');
+let tvOpen=false;
+
+function syncTracking(on){
+  $('#tgl-track').classList.toggle('on',on);
+  $('#tgl-track2').classList.toggle('on',on);
+  if(on && !tvOpen) openTracker();
+  if(!on && tvOpen) closeTracker();
+}
+function openTracker(){
+  tvOpen=true;
+  tvImg.src=API+'/display/camera?t='+Date.now();
+  $('#track-view').classList.add('open');
+  $('#tv-state').textContent='CAMERA ONLY'; $('#tv-state').className='';
+  timers._tv=setInterval(tvPoll,180);
+}
+function closeTracker(){
+  tvOpen=false;
+  clearInterval(timers._tv);
+  $('#track-view').classList.remove('open');
+  tvImg.removeAttribute('src');
+  tvBoxes.innerHTML='';
+}
+function stopTracking(){ api('/display/track_clear'); api('/face_tracking?value=false');
+  syncTracking(false); }
+function clearTarget(){ api('/display/track_clear'); toast('Target cleared — head going home'); }
+function followNearest(){ api('/face_tracking?value=true'); toast('Following the nearest face'); }
+/* If the head moves away from the person instead of towards them, an axis is
+   wired the other way round. Fixable here, in front of the robot, instead of
+   in the source. */
+function calibrateAxes(){ api('/display/track_calibrate');
+  toast('Calibrating — stand in view and hold still'); }
+function flipAxis(a){ api('/display/track_flip?axis='+a);
+  toast(a==='ud'?'Tilt direction flipped':'Turn direction flipped'); }
+
+async function tvPoll(){
+  if(!tvOpen) return;
+  try{
+    const s=await (await fetch(API+'/display/faces_live')).json();
+    // align the box layer with the rendered image
+    const r=tvImg.getBoundingClientRect(), w=$('#tv-wrap').getBoundingClientRect();
+    tvBoxes.style.left=(r.left-w.left)+'px'; tvBoxes.style.top=(r.top-w.top)+'px';
+    tvBoxes.style.width=r.width+'px'; tvBoxes.style.height=r.height+'px';
+
+    // Reuse the box elements instead of rebuilding the layer. innerHTML=''
+    // destroys and recreates every node, so the CSS transition never has an
+    // old position to move FROM and the boxes jump between polls.
+    const boxes=s.boxes||[];
+    while(tvBoxes.children.length>boxes.length) tvBoxes.lastChild.remove();
+    while(tvBoxes.children.length<boxes.length){
+      const d=document.createElement('div'); d.className='tv-box'; tvBoxes.appendChild(d);
+    }
+    boxes.forEach((b,i)=>{
+      const d=tvBoxes.children[i];
+      d.className='tv-box'+(b.sel?' sel':'');
+      d.style.left=(b.x*r.width)+'px';  d.style.top=(b.y*r.height)+'px';
+      d.style.width=(b.w*r.width)+'px'; d.style.height=(b.h*r.height)+'px';
+    });
+
+    const pill=$('#tv-state');
+    let label='CAMERA ONLY', cls='';
+    if(s.calibrating){ label='CALIBRATING…'; cls='live'; }
+    else if(s.selecting){ label='SELECTING…'; cls='live'; }
+    else if(s.tracking){ label='FOLLOWING'; cls='live'; }
+    else if(s.mode==='lock'||s.mode==='face'){ label=s.at_home?'HOME':'SEARCHING…'; cls='home'; }
+    pill.textContent=label; pill.className=cls;
+    $('#tv-hint').textContent=s.note||"Tap a face to follow — the head stays still until you do";
+  }catch{}
+}
+$('#tv-wrap').addEventListener('click',e=>{
+  const r=tvImg.getBoundingClientRect(), w=$('#tv-wrap').getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+  if(x<0||x>1||y<0||y>1) return;
+  const p=document.createElement('div');
+  p.className='tv-ping';
+  p.style.left=(e.clientX-w.left)+'px'; p.style.top=(e.clientY-w.top)+'px';
+  $('#tv-wrap').appendChild(p); setTimeout(()=>p.remove(),520);
+  $('#tv-hint').textContent='Selecting…';
+  api('/display/track_select?x='+x.toFixed(3)+'&y='+y.toFixed(3));
+});
+/* ═════════ Global on-screen keyboard ═════════ */
+(function globalKeyboard(){
+  const kbd=$('#gkbd'), keys=$('#gkbd-keys');
+  const valEl=$('#gkbd-val'), labelEl=$('#gkbd-label');
+  let target=null, shift=false, caps=false, symbols=false, built=false;
+
+  const LETTERS=[
+    ['1','2','3','4','5','6','7','8','9','0'],
+    ['q','w','e','r','t','y','u','i','o','p'],
+    ['a','s','d','f','g','h','j','k','l'],
+    ['⇧','z','x','c','v','b','n','m','⌫'],
+    ['?123','@','SPACE','.','✓']
+  ];
+  const SYMBOLS=[
+    ['1','2','3','4','5','6','7','8','9','0'],
+    ['!','@','#','$','%','&','*','(',')'],
+    ['-','_','=','+','/',':',';','"',"'"],
+    ['⇧','.',',','?','\\','|','~','`','⌫'],
+    ['ABC','@','SPACE','.','✓']
+  ];
+
+  // build once; update labels in place (never rebuild on shift → no lost taps)
+  function build(){
+    keys.innerHTML='';
+    (symbols?SYMBOLS:LETTERS).forEach(row=>{
+      const r=document.createElement('div'); r.className='gk-row';
+      row.forEach(k=>{
+        const b=document.createElement('button');
+        b.dataset.k=k;
+        if(k==='SPACE'||k==='?123'||k==='ABC') b.className='wide';
+        if(k==='✓') b.className='act';
+        // pointerdown does the work so a re-render can't steal the tap
+        b.addEventListener('pointerdown',ev=>{ ev.preventDefault(); ev.stopPropagation(); press(k); });
+        r.appendChild(b);
+      });
+      keys.appendChild(r);
+    });
+    built=true; relabel();
+  }
+  function relabel(){
+    const up=shift||caps;
+    keys.querySelectorAll('button').forEach(b=>{
+      const k=b.dataset.k;
+      if(k==='SPACE') b.textContent='space';
+      else if(k==='✓') b.textContent='Done';
+      else if(k==='⌫') b.textContent='⌫';
+      else if(k==='⇧'){ b.textContent='⇧'; b.classList.toggle('on',up); }
+      else if(k.length===1 && /[a-z]/.test(k)) b.textContent=up?k.toUpperCase():k;
+      else b.textContent=k;
+    });
+  }
+  function setVal(v){
+    if(!target) return;
+    target.value=v;
+    valEl.textContent=v||target.placeholder||'';
+    target.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+  function press(k){
+    if(!target) return;
+    if(k==='⌫'){ setVal(target.value.slice(0,-1)); return; }
+    if(k==='SPACE'){ setVal(target.value+' '); return; }
+    if(k==='✓'){ hide(); return; }
+    if(k==='⇧'){                       // shift → caps → off, in place
+      if(caps){ caps=false; shift=false; }
+      else if(shift){ shift=false; caps=true; }
+      else shift=true;
+      relabel(); return;
+    }
+    if(k==='?123'){ symbols=true; build(); return; }
+    if(k==='ABC'){ symbols=false; build(); return; }
+    let ch=k;
+    if(/[a-z]/.test(k) && (shift||caps)) ch=k.toUpperCase();
+    setVal(target.value+ch);
+    if(shift && !caps){ shift=false; relabel(); }
+  }
+  function show(el){
+    target=el;
+    labelEl.textContent=el.getAttribute('data-kbd-label')||el.placeholder||'Type';
+    valEl.textContent=el.value||el.placeholder||'';
+    shift=false; caps=false; symbols=false;
+    if(!built) build(); else relabel();
+    kbd.classList.add('open');
+    setTimeout(()=>{ try{ el.scrollIntoView({block:'center',behavior:'smooth'}); }catch(e){} },240);
+  }
+  function hide(){ kbd.classList.remove('open'); target=null; }
+
+  function bind(el){
+    if(el.dataset.gkbdBound) return;
+    if(el.closest('#wifi-setup')) return;
+    if(el.type==='file'||el.type==='range') return;
+    el.dataset.gkbdBound='1';
+    el.addEventListener('focus',()=>show(el));
+    el.addEventListener('click',()=>show(el));
+  }
+  document.querySelectorAll('input.field, textarea.field, input[type=text], input[type=search]').forEach(bind);
+  new MutationObserver(muts=>{
+    muts.forEach(m=>m.addedNodes.forEach(node=>{
+      if(node.nodeType!==1) return;
+      if(node.matches&&node.matches('input.field,textarea.field,input[type=text]')) bind(node);
+      node.querySelectorAll&&node.querySelectorAll('input.field,textarea.field,input[type=text]').forEach(bind);
+    }));
+  }).observe(document.body,{childList:true,subtree:true});
+
+  // close only when tapping a real outside target (never keyboard-internal)
+  document.addEventListener('pointerdown',e=>{
+    if(!kbd.classList.contains('open')) return;
+    if(kbd.contains(e.target)) return;              // any key/preview tap
+    if(e.target===target) return;
+    if(e.target.matches&&e.target.matches('input,textarea')) return;
+    hide();
+  });
+})();
+// Lightweight Bot stub — 3D model removed for performance; the hero
+// canvas animation stands in. These keep existing callers working.
+const Bot={
+  speaking:false,
+  setJoint(){}, resize(){}, setDrive(){},
+  setEyeColor(c){ if(window.__hero) window.__hero.setColor(c); },
+};
 </script>
 </body>
 </html>

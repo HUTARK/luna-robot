@@ -21,3 +21,19 @@ venv/
 __pycache__/
 *.pyc
 faces/
+
+# Per-unit data — must not be shared between robots
+robot_identity.json
+qa_ids.json
+qa_store.json
+settings.json
+poses.json
+ai_config.json
+faces/
+music/
+
+# Local only
+*.old
+__pycache__/
+*.pyc
+venv/

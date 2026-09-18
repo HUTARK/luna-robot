@@ -1,0 +1,776 @@
+{
+  "_readme": [
+    "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+    "LUNA \u2014 ARM AND HEAD MOTION",
+    "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+    "",
+    "THREE THINGS LIVE IN THIS FILE",
+    "",
+    "  speaking   Arm movement while she is talking. LOOPS: the poses run",
+    "             start to finish, then start again, for as long as she is",
+    "             speaking. The moment she stops, the arms go home.",
+    "",
+    "  modes      One-shot actions on the app's Mode buttons. Each plays",
+    "             through once and returns home. Rename them to whatever",
+    "             they actually do \u2014 HI, Handshake, Point.",
+    "",
+    "  nod        The head nod while she LISTENS to a question.",
+    "",
+    "THE DISPLAY'S MOTION TOGGLE governs the SPEAKING gestures only \u2014 whether",
+    "she gesticulates as she talks. The Mode buttons always work: somebody",
+    "has just pressed one on purpose, and refusing it because the ambient",
+    "movement is switched off would be baffling.",
+    "",
+    "ALL NUMBERS ARE APP VALUES \u2014 the same figures the display's sliders",
+    "show. Arms 0-2000, fingers 0-100.",
+    "",
+    "TO CHANGE A MOVEMENT",
+    "  1. Action page on the display, move the sliders until it looks right.",
+    "  2. Read the numbers off the screen.",
+    "  3. Type them into a pose below.",
+    "  4. Save. No restart \u2014 the next gesture picks it up.",
+    "",
+    "LEFT AND RIGHT ARE SEPARATE. Mirrored arms are never symmetric once",
+    "built, so a pose states each side:",
+    "",
+    "     { \"left\":  { \"elbow\": 1820, \"forearm\": 612 },",
+    "       \"right\": { \"elbow\": 1669, \"forearm\": 1897 },",
+    "       \"hold\": 0.9 }",
+    "",
+    "Only name the joints that move; anything omitted stays where the",
+    "previous pose left it.",
+    "",
+    "Check your edit before relying on it:",
+    "     python3 -m json.tool gestures.json",
+    "",
+    "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+    "TWO JOINTS AT ONCE, AND SMOOTH MOVEMENT",
+    "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+    "",
+    "Several joints in ONE pose move together:",
+    "",
+    "   { \"left\": { \"forearm\": 130, \"elbow\": 1600 }, \"hold\": 0.8 }",
+    "   { \"left\": {...}, \"right\": {...}, \"hold\": 0.8 }     both arms",
+    "",
+    "BUT they do not ARRIVE together by default. The firmware moves every",
+    "joint at the same degrees per second, so at speed 700 an 870-unit",
+    "forearm sweep takes 0.65s while a 100-unit elbow nudge takes 0.08s \u2014",
+    "the eye reads that as one joint moving and then another.",
+    "",
+    "Add \"glide\": true and the engine sends intermediate positions so every",
+    "joint covers the same FRACTION of its own travel at each step. They",
+    "then arrive at the same instant however far each has to go:",
+    "",
+    "   { \"left\": { \"forearm\": 130, \"elbow\": 1600 },",
+    "     \"hold\": 0.8, \"glide\": true }",
+    "",
+    "Glide also EASES \u2014 starting and ending slowly, which is what makes a",
+    "movement look smooth. Constant velocity reads as mechanical however",
+    "slow it is, because real limbs accelerate and decelerate.",
+    "Add \"ease\": false for a constant-rate glide.",
+    "",
+    "COST: about ten commands per joint instead of one. Fine for a few poses",
+    "where the coordination matters; not something to put on every pose of a",
+    "twenty-second dance."
+  ],
+  "limits": {
+    "_note": [
+      "Hard clamp per joint. Nothing in this file can drive a joint outside",
+      "these, so a typo cannot throw an arm.",
+      "",
+      "Opened to the full 0-2000 because home is at 0 for several joints, so",
+      "a narrow band around 1000 would have made home itself unreachable.",
+      "",
+      "THESE ARE NOT MEASURED STOPS. They are the app's full range, which is",
+      "the widest thing the firmware will accept. Narrow them per joint once",
+      "you know where each one binds: creep it out with the sliders, back off",
+      "the moment it strains or touches the body, and put that number here.",
+      "Until then the firmware's ARM_MIN/ARM_MAX are the only protection."
+    ],
+    "lateral": [
+      0,
+      2000
+    ],
+    "shoulder": [
+      0,
+      2000
+    ],
+    "forearm": [
+      0,
+      2000
+    ],
+    "elbow": [
+      0,
+      2000
+    ],
+    "wristLR": [
+      0,
+      2000
+    ],
+    "wristUD": [
+      0,
+      2000
+    ],
+    "thumb": [
+      0,
+      100
+    ],
+    "index": [
+      0,
+      100
+    ],
+    "middle": [
+      0,
+      100
+    ],
+    "ring": [
+      0,
+      100
+    ],
+    "pinky": [
+      0,
+      100
+    ],
+    "headLR": [
+      0,
+      2000
+    ],
+    "headUD": [
+      278,
+      1611
+    ],
+    "_head_note": [
+      "headUD is clamped to 278-1611, which is 25-145 degrees \u2014 the",
+      "MEASURED mechanical travel of Luna's head. Outside that the servo",
+      "holds against its stop.",
+      "",
+      "A sequence asking for headUD 2000 is therefore capped at 1611. That",
+      "is the top of the real range, so the head still looks fully up.",
+      "",
+      "While a sequence drives the head, the head tracker stands down \u2014 it",
+      "normally owns these joints for the listening nod and for turning",
+      "towards a voice, and two writers on one joint means the head twitches."
+    ]
+  },
+  "home": {
+    "_note": [
+      "The MEASURED rest pose. Every joint here is sent the moment she stops",
+      "speaking and after every mode action, so the arms cannot drift over a",
+      "conversation.",
+      "",
+      "Note lateral, shoulder and elbow are 0, NOT 1000. The earlier values",
+      "assumed 1000 was mid-travel and therefore neutral; on this robot it is",
+      "not, so every pose written around 1000 was wrong. The wrists are the",
+      "only joints that genuinely rest at mid-travel."
+    ],
+    "lateral": 0,
+    "shoulder": 0,
+    "forearm": 1000,
+    "elbow": 0,
+    "wristLR": 1000,
+    "wristUD": 1000,
+    "headLR": 1000,
+    "headUD": 1000,
+    "thumb": 0,
+    "index": 0,
+    "middle": 0,
+    "ring": 0,
+    "pinky": 0
+  },
+  "nod": {
+    "_note": [
+      "Head nod while LISTENING to a question. Up and down only.",
+      "amplitude is app values either side of where the head points: 35 is",
+      "about 3 degrees. Larger stops reading as attention and starts reading",
+      "as agreement. period is one full cycle in seconds."
+    ],
+    "amplitude": 35,
+    "period": 2.2
+  },
+  "speed": 320,
+  "_speed_note": [
+    "Servo speed while gesturing, of 2000. LOWER IS SMOOTHER: the firmware",
+    "interpolates towards each target at this rate, so a smaller number means",
+    "more, finer steps and less visible stepping on a long sweep.",
+    "",
+    "320 of 2000 is roughly 60 degrees a second \u2014 deliberate rather than",
+    "brisk. Raise it if the gestures feel sluggish; drop towards 200 if any",
+    "movement looks steppy.",
+    "",
+    "A mode can override this with its own \"speed\" value."
+  ],
+  "speaking": {
+    "_note": [
+      "Runs on a LOOP the whole time she is speaking an ANSWER, then the arms",
+      "go home. Fifteen steps as measured, one joint per step, alternating",
+      "arms.",
+      "",
+      "Each step names only the joint that moves, so everything else holds",
+      "where the previous step left it \u2014 that is what makes the arms build up",
+      "a posture over the cycle rather than snapping between positions.",
+      "",
+      "ONLY for answers: Q&A, GPT and the vision answers. Not the wake",
+      "acknowledgement, not 'Let me take a look', not the welcome message and",
+      "not reminders \u2014 see answers_only below.",
+      "",
+      "Governed by the display's Motion toggle. Off means she talks without",
+      "moving; the Mode buttons still work either way.",
+      "",
+      "One full cycle takes about 11 seconds. A short answer will not finish",
+      "it, which is fine: the arms simply go home from wherever they reached."
+    ],
+    "answers_only": true,
+    "_answers_only_note": [
+      "true  gesture only while speaking an answer to a question.",
+      "false gesture during any speech at all, including the wake",
+      "      acknowledgement and the welcome message \u2014 which looks odd, since",
+      "      'Yes?' is over before the first pose completes."
+    ],
+    "loop_pause": 0.5,
+    "_loop_pause_note": "Seconds between the end of one cycle and the start of the next. 0 runs them straight together.",
+    "poses": [
+      {
+        "left": {
+          "elbow": 1068
+        },
+        "hold": 0.7
+      },
+      {
+        "right": {
+          "elbow": 1279
+        },
+        "hold": 0.7
+      },
+      {
+        "left": {
+          "elbow": 345
+        },
+        "hold": 0.7
+      },
+      {
+        "right": {
+          "forearm": 791
+        },
+        "hold": 0.7
+      },
+      {
+        "left": {
+          "elbow": 710
+        },
+        "hold": 0.7
+      },
+      {
+        "right": {
+          "forearm": 1339
+        },
+        "hold": 0.7
+      },
+      {
+        "left": {
+          "forearm": 613
+        },
+        "hold": 0.7
+      },
+      {
+        "right": {
+          "elbow": 218
+        },
+        "hold": 0.7
+      },
+      {
+        "left": {
+          "elbow": 1802
+        },
+        "hold": 0.7
+      }
+    ]
+  },
+  "modes": {
+    "_note": [
+      "The app's Mode buttons. It sends /mode?value=Mode 1, Mode 2, Mode 3 \u2014",
+      "which is why the keys are named that way. The 'name' is only for the",
+      "log, so call it whatever the action actually is.",
+      "",
+      "Each plays through ONCE and returns home. They do not loop.",
+      "",
+      "Add more keys if the app ever sends Mode 4."
+    ],
+    "Mode 1": {
+      "name": "HI",
+      "_note": [
+        "THE RAISE now glides. Your values are unchanged \u2014 only the grouping",
+        "and the timing differ.",
+        "",
+        "Before: lateral 1100 (1.8s), THEN shoulder 1763 (0.8s), THEN elbow",
+        "2000 (1.9s) \u2014 three separate movements, each starting after the last",
+        "finished. The arm went out, then up, then straightened.",
+        "",
+        "Now: lateral and shoulder glide TOGETHER, so the arm lifts and opens as",
+        "one movement, then the elbow extends. Two movements instead of three,",
+        "and both eased so they start and end gently.",
+        "",
+        "The wave is deliberately NOT glided. It is a single joint, so there is",
+        "nothing to coordinate; easing would soften the snap that makes it read",
+        "as a wave; and eight glided poses would be eighty commands where eight",
+        "will do.",
+        "",
+        "If the lift looks too slow, lower the holds rather than removing the",
+        "glide \u2014 a glide spends 80% of its hold travelling, so 1.6s means about",
+        "1.3s of movement."
+      ],
+      "speed": 320,
+      "poses": [
+        {
+          "left": {
+            "lateral": 1100,
+            "shoulder": 1763
+          },
+          "hold": 1.6,
+          "glide": true
+        },
+        {
+          "left": {
+            "elbow": 2000
+          },
+          "hold": 1.2,
+          "glide": true
+        },
+        {
+          "left": {
+            "elbow": 663
+          },
+          "hold": 1.0
+        },
+        {
+          "left": {
+            "elbow": 1523
+          },
+          "hold": 0.6
+        },
+        {
+          "left": {
+            "elbow": 625
+          },
+          "hold": 0.6
+        },
+        {
+          "left": {
+            "elbow": 1523
+          },
+          "hold": 0.6
+        },
+        {
+          "left": {
+            "elbow": 663
+          },
+          "hold": 0.6
+        },
+        {
+          "left": {
+            "elbow": 1523
+          },
+          "hold": 0.6
+        },
+        {
+          "left": {
+            "elbow": 663
+          },
+          "hold": 0.6
+        },
+        {
+          "left": {
+            "elbow": 1523
+          },
+          "hold": 0.6
+        }
+      ]
+    },
+    "Mode 2": {
+      "name": "Handshake",
+      "_note": [
+        "RIGHT hand. One step per pose, as specified:",
+        "   1. lateral 230",
+        "   2. elbow 1537",
+        "   3. elbow 2000",
+        "   4. elbow 1353     the shake",
+        "   5. elbow 2000",
+        "   6. elbow 1583",
+        "then home.",
+        "",
+        "Steps 3 to 6 are the shake itself, so they hold briefly. Add more",
+        "elbow lines to shake more times."
+      ],
+      "poses": [
+        {
+          "right": {
+            "lateral": 430
+          },
+          "hold": 0.9
+        },
+        {
+          "right": {
+            "elbow": 1537
+          },
+          "hold": 1.0
+        },
+        {
+          "right": {
+            "elbow": 2000
+          },
+          "hold": 0.5
+        },
+        {
+          "right": {
+            "elbow": 1353
+          },
+          "hold": 0.5
+        },
+        {
+          "right": {
+            "elbow": 2000
+          },
+          "hold": 0.5
+        },
+        {
+          "right": {
+            "elbow": 1583
+          },
+          "hold": 0.7
+        }
+      ]
+    },
+    "Mode 3": {
+      "name": "Vanakkam",
+      "_note": [
+        "BOTH hands, moving together. As specified:",
+        "   1. lateral 932",
+        "   2. elbow 1877",
+        "   3. forearm 595, held 10 seconds",
+        "then home.",
+        "",
+        "Written as a shared value rather than separate left and right blocks,",
+        "because the numbers were taken with both arms moving together and are",
+        "the same for each. If the two arms turn out not to match once you",
+        "watch it, split any pose into left/right blocks with its own numbers.",
+        "",
+        "Slower than the other modes: a greeting held for ten seconds should",
+        "arrive gently rather than snap into place."
+      ],
+      "speed": 260,
+      "hand": "both",
+      "poses": [
+        {
+          "lateral": 932,
+          "hold": 1.0
+        },
+        {
+          "elbow": 1877,
+          "hold": 1.0
+        },
+        {
+          "forearm": 595,
+          "hold": 10.0
+        }
+      ]
+    }
+  },
+  "home_speed": 130,
+  "_home_speed_note": [
+    "Speed for the return to home, of 2000. Slower than the gestures on",
+    "purpose: the arms have just been somewhere deliberate, and snapping back",
+    "looks like a fault. On a full-size arm it is also the movement most",
+    "likely to loosen a mount."
+  ],
+  "runs": {
+    "_note": [
+      "The app's Run buttons. It sends /run?value=Run 1, Run 2, Run 3.",
+      "",
+      "Same shape as modes: one-shot, plays through once, then home. The only",
+      "difference is which button triggers it.",
+      "",
+      "A step of { \"home\": true } returns the arms to the rest pose PART WAY",
+      "THROUGH and waits for them to arrive \u2014 Run 1 needs it between the left",
+      "half and the right half."
+    ],
+    "Run 1": {
+      "name": "Lap",
+      "_note": [
+        "As specified. Left side first, then home, then the right side mirrors",
+        "it and the head lifts.",
+        "",
+        "  right lateral 1641, right shoulder 843",
+        "  left lateral 993, left forearm 374, left elbow 2000",
+        "  HOME",
+        "  left lateral 1641, left shoulder 843",
+        "  right lateral 993, right forearm 374, right elbow 2000",
+        "  headUD 2000  (capped to 1611, the top of the real travel)",
+        "  hold 5s, then home",
+        "",
+        "The head tracker is stood down for the duration, so its nod does not",
+        "fight the headUD step."
+      ],
+      "poses": [
+        {
+          "right": {
+            "lateral": 1641
+          },
+          "hold": 0.9
+        },
+        {
+          "right": {
+            "shoulder": 843
+          },
+          "hold": 0.9
+        },
+        {
+          "left": {
+            "lateral": 993
+          },
+          "hold": 0.9
+        },
+        {
+          "left": {
+            "forearm": 374
+          },
+          "hold": 0.9
+        },
+        {
+          "left": {
+            "elbow": 2000
+          },
+          "hold": 1.0
+        },
+        {
+          "home": true,
+          "hold": 0.2
+        },
+        {
+          "left": {
+            "lateral": 1641
+          },
+          "hold": 0.9
+        },
+        {
+          "left": {
+            "shoulder": 843
+          },
+          "hold": 0.9
+        },
+        {
+          "right": {
+            "lateral": 993
+          },
+          "hold": 0.9
+        },
+        {
+          "right": {
+            "forearm": 374
+          },
+          "hold": 0.9
+        },
+        {
+          "right": {
+            "elbow": 2000
+          },
+          "hold": 0.9
+        },
+        {
+          "headUD": 2000,
+          "hold": 5.0
+        }
+      ]
+    }
+  },
+  "loops": {
+    "_note": [
+      "The app's Loop buttons \u2014 a DANCE.",
+      "",
+      "  intro     played ONCE, to get into position",
+      "  poses     repeated for `duration` seconds, with the music",
+      "",
+      "Kept separate because getting into a pose and keeping a rhythm are",
+      "different things: repeating the setup moves would make the dance lurch",
+      "back to the start every cycle instead of flowing.",
+      "",
+      "MUSIC lives in  ~/pi_assistant/music/  \u2014 .wav plays with aplay, already",
+      "installed. .mp3 needs:  sudo apt install mpg123",
+      "",
+      "eyes         an animation for the length of the dance, back to idle after",
+      "base_wiggle  rock the base left and right. Equal pairs, so the robot",
+      "             finishes roughly where it started rather than creeping",
+      "             across the room over twenty seconds.",
+      "base_speed   1-100. Low on purpose: this is a sway, not driving."
+    ],
+    "Loop 1": {
+      "name": "Dance 1",
+      "_note": [
+        "INTRO, once:",
+        "   left lateral 1117 + right lateral 1117   (one pose, so together)",
+        "   left elbow 1649",
+        "   right forearm 130",
+        "   right elbow 2000",
+        "   right forearm 1000",
+        "",
+        "LOOP, for 20 seconds with the music and the base rocking:",
+        "   LF 130, LF 1000, RF 130, RF 1000,",
+        "   LF 130, LF 1000, RF 140, RF 1000",
+        "",
+        "Eight poses at 0.45s is a 3.6-second cycle, so about five and a half",
+        "repeats in 20 seconds. Short poses on purpose: this is a beat, and at a",
+        "second a pose it would read as slow waving instead.",
+        "",
+        "Watch that the forearms actually REACH 130 and 1000 before each hold",
+        "expires. At speed 700 a full sweep takes roughly 0.4s, so 0.45 is close",
+        "to the limit \u2014 if the movement looks clipped, raise the holds to 0.55",
+        "or raise the speed rather than leaving it half-travelled.",
+        "",
+        "The RF 140 in the seventh pose is as given, not a typo on my part."
+      ],
+      "duration": 20,
+      "music": "dance1.wav",
+      "speed": 700,
+      "eyes": "disco",
+      "base_wiggle": true,
+      "base_speed": 25,
+      "base_step": 0.7,
+      "head": {
+        "_note": [
+          "The head moves on its OWN rhythm, in parallel with the arms \u2014",
+          "not as extra joints in the arm poses. The forearm section runs",
+          "at 0.45s a pose; a head following that beat twitches rather than",
+          "dances, and the head carries the camera so it is the most",
+          "visible thing moving.",
+          "",
+          "This track loops independently for the whole dance.",
+          "",
+          "headLR 0-2000 is the full sweep; headUD is clamped to 278-1611,",
+          "which is the measured 25-145 degrees of real travel.",
+          "",
+          "Holds of about a second: the head has further to travel than a",
+          "forearm and looks best arriving rather than snapping."
+        ],
+        "poses": [
+          {
+            "headLR": 700,
+            "hold": 1.1
+          },
+          {
+            "headLR": 1300,
+            "hold": 1.1
+          },
+          {
+            "headUD": 1250,
+            "hold": 0.9
+          },
+          {
+            "headLR": 1000,
+            "headUD": 1000,
+            "hold": 0.9
+          },
+          {
+            "headLR": 1300,
+            "hold": 1.1
+          },
+          {
+            "headLR": 700,
+            "hold": 1.1
+          },
+          {
+            "headUD": 800,
+            "hold": 0.9
+          },
+          {
+            "headLR": 1000,
+            "headUD": 1000,
+            "hold": 0.9
+          }
+        ]
+      },
+      "intro": [
+        {
+          "left": {
+            "lateral": 1117
+          },
+          "right": {
+            "lateral": 1117
+          },
+          "hold": 1.0
+        },
+        {
+          "left": {
+            "elbow": 1649
+          },
+          "hold": 0.8
+        },
+        {
+          "right": {
+            "forearm": 130
+          },
+          "hold": 0.8
+        },
+        {
+          "right": {
+            "elbow": 2000
+          },
+          "hold": 0.8
+        },
+        {
+          "right": {
+            "forearm": 1000
+          },
+          "hold": 0.8
+        }
+      ],
+      "poses": [
+        {
+          "left": {
+            "forearm": 130
+          },
+          "hold": 0.45
+        },
+        {
+          "left": {
+            "forearm": 1000
+          },
+          "hold": 0.45
+        },
+        {
+          "right": {
+            "forearm": 130
+          },
+          "hold": 0.45
+        },
+        {
+          "right": {
+            "forearm": 1000
+          },
+          "hold": 0.45
+        },
+        {
+          "left": {
+            "forearm": 130
+          },
+          "hold": 0.45
+        },
+        {
+          "left": {
+            "forearm": 1000
+          },
+          "hold": 0.45
+        },
+        {
+          "right": {
+            "forearm": 140
+          },
+          "hold": 0.45
+        },
+        {
+          "right": {
+            "forearm": 1000
+          },
+          "hold": 0.45
+        }
+      ]
+    }
+  }
+}
